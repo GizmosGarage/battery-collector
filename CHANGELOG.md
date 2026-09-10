@@ -8,6 +8,38 @@ copy of the script as it existed at that point, so you can diff any two versions
 
 ---
 
+## 2026-09-10 — Move speed scales with batteries collected
+
+**Direction:** the game is becoming a parody of the "AI data centres are eating
+the power grid" story. First mechanic in that direction: you start barely able to
+move, and every battery (unit of power) you hoard makes you faster.
+
+### Added: `PlayerSpeed` — `Scripts/Player_Speed/V1.txt`
+- Server Script in `ServerScriptService`.
+- CONFIG: `BASE_WALKSPEED` (4 -- Roblox default is 16), `SPEED_PER_BATTERY` (1.5),
+  `MAX_WALKSPEED` (60).
+- `WalkSpeed = min(BASE + batteryCount * SPEED_PER_BATTERY, MAX)`.
+- Sets `StarterPlayer.CharacterWalkSpeed = BASE_WALKSPEED` so fresh spawns start
+  slow with no one-frame flash of normal speed.
+- Per player: re-applies on `CharacterAdded` (respawns) and on every
+  `leaderstats.Batteries.Changed`. Also runs once for anyone already in-game.
+- Reads the count defensively (`FindFirstChild` chain, default 0).
+
+**Concepts introduced:** `Humanoid.WalkSpeed` as the movement-speed knob;
+`StarterPlayer.CharacterWalkSpeed` as the spawn default; `CharacterAdded` +
+`WaitForChild("Humanoid")` (the character's parts stream in after the event);
+deriving one system's output (speed) purely from another system's state (score)
+by listening to `.Changed` -- the two features stay in sync with no shared code.
+
+**Tested:** Server-side check -- WalkSpeed = 4 at 0 batteries, 19 at 10 (4 + 10*1.5),
+back to 4 when the score is reset to 0. No console errors.
+
+**Composes with the future round loop:** when step 3 resets `Batteries` to 0
+between rounds, this handler will drop everyone back to `BASE_WALKSPEED`
+automatically.
+
+---
+
 ## 2026-09-10 — Spin moved to the client; batteries pivot about their centre
 
 **Goal:** (1) run the lean/spin on the client so it costs zero network traffic;
