@@ -18,7 +18,8 @@
 
 # One-off setup helpers (safe to delete once the repo is up)
 SETUP.bat
-_setup-log.txt
+_setup_*.bat
+_setup-log*.txt
 _rojo-serve.txt
 
 # Editor and OS junk
