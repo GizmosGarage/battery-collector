@@ -27,20 +27,40 @@ local BASE_HOVER    = 1.8                      -- how far a battery's BOTTOM flo
 local RESPAWN_DELAY = 3                        -- seconds between a battery being collected and a new one appearing
 local BATTERY_TAG   = "BatteryPickup"          -- CollectionService tag the client watches for
 
--- The battery models to clone, all in ServerStorage. Each has its pivot set to
--- its own CENTRE (so PivotTo rotates it around the middle). Every size counts as
--- 1 when collected -- the four sizes are purely visual variety.
-local BATTERY_TEMPLATES = { "Battery", "Battery_AAA", "Battery_C", "Battery_D" }
+-- The battery models to clone, in order from COMMONEST to RAREST. Each has its
+-- pivot at its own CENTRE. Every size counts as 1 when collected -- the sizes are
+-- purely visual variety.
+local BATTERY_TEMPLATES = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }
+
+-- Each size in the list spawns this many times less often than the one before it,
+-- so the odds fall off exponentially. With 4 sizes and a falloff of 3 the mix is
+-- roughly AAA 68% / AA 22% / C 7% / D 3%.
+local RARITY_FALLOFF = 3
 -- ==============================================================
 
--- Look each template up once, and remember its height so we can float different
--- sizes with their bottoms lined up.
-local templates = {}   -- { { model = Model, height = number }, ... }
-for _, name in BATTERY_TEMPLATES do
+-- Look each template up once. Record its height (to float sizes with their
+-- bottoms lined up) and its spawn weight (falloff ^ steps-from-the-rarest).
+local templates = {}   -- { { model = Model, height = number, weight = number }, ... }
+local totalWeight = 0
+for i, name in BATTERY_TEMPLATES do
 	local model = ServerStorage:WaitForChild(name, 10)
 	assert(model, "BatterySpawner: missing template '" .. name .. "' in ServerStorage")
 	local _, size = model:GetBoundingBox()
-	table.insert(templates, { model = model, height = size.Y })
+	local weight = RARITY_FALLOFF ^ (#BATTERY_TEMPLATES - i)
+	totalWeight += weight
+	table.insert(templates, { model = model, height = size.Y, weight = weight })
+end
+
+-- Pick a template at random, biased by weight -- commoner sizes win more often.
+local function pickTemplate()
+	local roll = math.random() * totalWeight
+	for _, entry in templates do
+		roll -= entry.weight
+		if roll <= 0 then
+			return entry
+		end
+	end
+	return templates[#templates]   -- float rounding safety net
 end
 
 -- Pick a random hover position inside the square, for a battery `height` tall.
@@ -53,7 +73,7 @@ end
 
 -- Create one battery and wire up what happens when it's collected.
 local function spawnBattery()
-	local pick = templates[math.random(#templates)]
+	local pick = pickTemplate()
 	local battery = pick.model:Clone()
 
 	local centerPos = randomCenterPosition(pick.height)

@@ -10,6 +10,34 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Battery sizes spawn at exponentially-falling rates
+
+**Goal:** AAA is commonest, D is rarest, and each size in between is a constant
+factor rarer than the last.
+
+### Changed: `src/server/BatterySpawner.server.lua`
+- `BATTERY_TEMPLATES` reordered commonest → rarest:
+  `{ "Battery_AAA", "Battery", "Battery_C", "Battery_D" }`.
+- New config `RARITY_FALLOFF = 3`. At startup each template gets
+  `weight = RARITY_FALLOFF ^ (#list - i)` → weights 27 / 9 / 3 / 1 (each 3x the
+  next), summed into `totalWeight`.
+- New `pickTemplate()`: `roll = math.random() * totalWeight`, walk the list
+  subtracting weights, return the entry the roll lands in. Replaces the old
+  uniform `templates[math.random(#templates)]`.
+
+**Odds** (falloff 3): AAA ~68% · AA ~23% · C ~7% · D ~2%. Change `RARITY_FALLOFF`
+to steepen/flatten it.
+
+**Concepts introduced:** weighted random selection (weights → cumulative roll);
+an exponential curve from a single knob (`base ^ position`); ordering a config
+list so its index carries meaning.
+
+**Tested:** reproduced the weighting over 4000 draws → 67.5 / 23.0 / 7.1 / 2.4 %,
+matching the intended curve. Live field of 15 showed AAA x9, AA x3, C x2, D x1.
+No console errors.
+
+---
+
 ## 2026-09-10 — Battery size variety (AAA / C / D)
 
 **Goal:** the field spawns a random mix of battery sizes for visual variety.
