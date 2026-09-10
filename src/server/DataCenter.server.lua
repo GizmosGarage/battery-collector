@@ -18,12 +18,15 @@
 --]]
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 
 -- ============================ CONFIG ============================
-local SECONDS_PER_BATTERY = 2   -- run time each dumped battery buys
-local CASH_PER_SECOND     = 5   -- cash paid per second while running
-local PAYOUT_INTERVAL     = 1   -- seconds between payouts (keep at 1 for whole-second math)
-local DUMP_DEBOUNCE       = 1   -- ignore repeat touches from the same player for this long
+local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 for whole-second math)
+local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for this long
+-- SECONDS_PER_BATTERY and CASH_PER_SECOND now come per-player from the Upgrades
+-- module, scaled by that player's purchased upgrade levels.
 -- ==============================================================
 
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
@@ -69,12 +72,16 @@ pad.Touched:Connect(function(hit)
 	batteries.Value = 0
 	lastDump[player] = now
 
-	runs[player] = (runs[player] or 0) + dumped * SECONDS_PER_BATTERY
+	-- Runtime each battery is worth for THIS player (their Seconds upgrade level).
+	local secondsPerBattery = Upgrades.effect("Seconds", player:GetAttribute("SecondsLevel") or 0)
+	local addedSeconds = math.floor(dumped * secondsPerBattery)
+
+	runs[player] = (runs[player] or 0) + addedSeconds
 	publish(player)
 
 	print(string.format(
 		"%s dumped %d batteries -> data center runs %d more seconds (now %d)",
-		player.Name, dumped, dumped * SECONDS_PER_BATTERY, runs[player]
+		player.Name, dumped, addedSeconds, runs[player]
 	))
 end)
 
@@ -92,7 +99,9 @@ task.spawn(function()
 		for player, secondsLeft in runs do
 			local cash = getStat(player, "Cash")
 			if cash then
-				cash.Value += CASH_PER_SECOND * PAYOUT_INTERVAL
+				-- Cash/second for THIS player (their Cash upgrade level).
+				local cashPerSecond = Upgrades.effect("Cash", player:GetAttribute("CashLevel") or 0)
+				cash.Value += cashPerSecond * PAYOUT_INTERVAL
 			end
 
 			local remaining = secondsLeft - PAYOUT_INTERVAL

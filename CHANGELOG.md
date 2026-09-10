@@ -10,6 +10,65 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Upgrade shop (first UI, first RemoteEvent)
+
+**Goal:** a second platform that opens a shop UI with two upgrades — "run time
+per battery" and "cash per second" — each with an exponentially growing cost.
+
+### Added: `src/shared/Upgrades.lua` (ModuleScript -> ReplicatedStorage)
+- One source of truth for both upgrades. `defs` table holds `base`, `perLevel`,
+  `baseCost`, `growth` per upgrade id ("Seconds", "Cash").
+- `Upgrades.effect(id, level)` = `base + level * perLevel` (linear effect).
+- `Upgrades.cost(id, level)` = `floor(baseCost * growth ^ level)` — **exponential**
+  (50, 75, 112, 168, 253, ... at growth 1.5).
+- `Upgrades.formatEffect` for display. Server and client both `require` this, so
+  the numbers can't drift apart.
+
+### Added (world geometry, place file only): `Workspace.Shop`
+- `Pad` (12x1x12, steady blue) at (6, 0.5, -3), beside the data-center pad.
+- `Sign` BillboardGui: "UPGRADE SHOP".
+
+### Added: `src/server/Shop.server.lua`
+- Creates the `BuyUpgrade` RemoteEvent in ReplicatedStorage.
+- Owns `levels[player] = { Seconds = 0, Cash = 0 }`; publishes them as
+  `SecondsLevel` / `CashLevel` attributes on the Player.
+- `BuyUpgrade.OnServerEvent`: **validates the client's request** — real id?
+  can they afford `Upgrades.cost`? — then deducts Cash and bumps the level.
+  The client never gets to say "I bought this"; the server decides.
+
+### Added: `src/client/ShopUI.client.lua` (LocalScript)
+- Builds the whole `ScreenGui` in code (StarterGui isn't in the Rojo project, so
+  a code-built UI is what lives in the repo). Panel, a `makeRow(id)` helper used
+  for both upgrades, Buy buttons.
+- `Buy` -> `BuyUpgrade:FireServer(id)`. Nothing else.
+- `refresh()` redraws from `Upgrades` + the player's own attributes + Cash;
+  reconnected on `SecondsLevel`/`CashLevel` attribute changes and `Cash.Changed`.
+  Button turns green/grey by affordability.
+- A `Heartbeat` loop shows/hides the panel by distance to `Shop.Pad`
+  (`SHOW_RANGE = 12`).
+
+### Changed: `src/server/DataCenter.server.lua`
+- Removed the fixed `SECONDS_PER_BATTERY` / `CASH_PER_SECOND` constants. Now each
+  is computed per player from `Upgrades.effect(id, player:GetAttribute(id.."Level"))`
+  — so a player's own upgrades scale their dump. Run time added is `math.floor`ed
+  to stay a whole number.
+
+**Concepts introduced:** a **ModuleScript** as shared code both sides `require`;
+a **RemoteEvent** as the client->server request channel and *server-authoritative
+validation* (never trust the client's claim); building a GUI entirely in code
+(`ScreenGui`/`Frame`/`TextButton`/`UICorner`/`UIListLayout`), `Button.Activated`,
+`ScreenGui.Enabled` + `ResetOnSpawn`; an exponential cost curve; one system
+(DataCenter) reading another system's (Shop's) published per-player state.
+
+**Tested (Play mode):** panel appears on the pad, hides off it. Rows show
+"2.0s -> 2.5s" / "5/s -> 7/s" and "Buy $50". Bought Cash once: Cash 500->450,
+CashLevel 0->1, row became "7/s -> 9/s" / "Buy $75". Bought Seconds until broke:
+levels 0..4 at costs 50/75/112/168, then further buys and an invalid id were
+rejected (level and Cash unchanged). Dumped 4 batteries with SecondsLevel 4 +
+CashLevel 1: run started at ~16s (4 x 4.0) and paid ~7/s. No errors.
+
+---
+
 ## 2026-09-10 — Data-center pad is now per-player, not shared
 
 **Goal:** the pad should look "ONLINE" (glowing) only for the player whose own
