@@ -1,0 +1,118 @@
+--[[
+	BatterySpawner  --  Server Script, lives in ServerScriptService
+
+	Owns EVERY battery in the game:
+	  1. clones a template model from ServerStorage
+	  2. drops each clone at a random spot in a square area, leaning to one side
+	  3. spins every battery around the vertical axis, forever
+	  4. on a player touching a battery's Hitbox, adds 1 to their score
+	  5. a few seconds after a battery is collected, spawns a fresh one elsewhere
+
+	The collection logic exists exactly ONCE, no matter how many batteries exist.
+--]]
+
+local Players = game:GetService("Players")
+local ServerStorage = game:GetService("ServerStorage")
+local RunService = game:GetService("RunService")
+
+-- The model we copy. It lives in ServerStorage, so it never shows up in the
+-- world on its own and never gets sent to players.
+local batteryTemplate = ServerStorage:WaitForChild("Battery", 10)
+assert(batteryTemplate, "BatterySpawner: no 'Battery' template found in ServerStorage")
+
+-- ============================ CONFIG ============================
+-- Change these numbers to retune the game. Everything below reads from here.
+local BATTERY_COUNT        = 15                       -- how many batteries exist at once
+local AREA_CENTER          = Vector3.new(-5, 0, -21)  -- middle of the spawn field (near the spawn pad)
+local AREA_SIZE            = 120                      -- batteries spawn inside a 120 x 120 stud square
+local GROUND_Y             = 0.5                      -- height of each battery's base (small lift so the lean doesn't clip the floor)
+local RESPAWN_DELAY        = 3                        -- seconds between a battery being collected and a new one appearing
+local TILT_DEGREES         = 15                       -- how far each battery leans to the side
+local SPIN_DEGREES_PER_SEC = 90                       -- how fast batteries turn around the vertical axis
+-- ==============================================================
+
+-- Work these constant rotations out once, not every frame.
+local TILT_CFRAME = CFrame.Angles(math.rad(TILT_DEGREES), 0, 0)   -- a fixed lean about the X axis
+local SPIN_RADIANS_PER_SEC = math.rad(SPIN_DEGREES_PER_SEC)
+
+-- Every battery currently in the world, plus what we need to keep spinning it.
+-- Each entry: { model = <Model>, basePos = <Vector3>, phase = <number, radians> }
+local activeBatteries = {}
+
+-- How far "the spin" has turned so far, in radians. ONE number shared by every
+-- battery, so there is no floating-point drift from adding to each one forever.
+local spin = 0
+
+-- Pick a random ground position inside the square.
+local function randomBasePosition()
+	local half = AREA_SIZE / 2
+	local x = AREA_CENTER.X + math.random(-half, half)
+	local z = AREA_CENTER.Z + math.random(-half, half)
+	return Vector3.new(x, GROUND_Y, z)
+end
+
+-- Where a battery should be right now: stand it at basePos, turn it (phase + spin)
+-- around the vertical axis, then apply the fixed lean.
+local function batteryCFrame(basePos, phase)
+	return CFrame.new(basePos) * CFrame.Angles(0, phase + spin, 0) * TILT_CFRAME
+end
+
+-- Create one battery and wire up what happens when it's collected.
+local function spawnBattery()
+	local battery = batteryTemplate:Clone()
+
+	local basePos = randomBasePosition()
+	local phase = math.rad(math.random(0, 359))   -- each battery starts at its own angle
+	battery:PivotTo(batteryCFrame(basePos, phase))
+	battery.Parent = workspace
+
+	table.insert(activeBatteries, { model = battery, basePos = basePos, phase = phase })
+
+	-- A clone made on the server is fully built right away, so .Hitbox is safe here.
+	local hitbox = battery.Hitbox
+	local collected = false                -- guard: .Touched fires many times per footstep
+
+	hitbox.Touched:Connect(function(hit)
+		if collected then
+			return
+		end
+
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if not player then
+			return
+		end
+
+		collected = true
+
+		local leaderstats = player:FindFirstChild("leaderstats")
+		local batteries = leaderstats and leaderstats:FindFirstChild("Batteries")
+		if batteries then
+			batteries.Value += 1
+		end
+
+		battery:Destroy()   -- the spin loop drops it from activeBatteries next frame
+
+		-- Queue a replacement to appear later, without pausing this script.
+		task.delay(RESPAWN_DELAY, spawnBattery)
+	end)
+end
+
+-- ONE loop drives every battery's spin. Heartbeat fires once per frame and gives
+-- us `dt`, the seconds since the last frame, so the speed is identical on any machine.
+RunService.Heartbeat:Connect(function(dt)
+	spin += SPIN_RADIANS_PER_SEC * dt
+
+	for i = #activeBatteries, 1, -1 do          -- backwards, so table.remove is safe mid-loop
+		local entry = activeBatteries[i]
+		if entry.model.Parent == nil then
+			table.remove(activeBatteries, i)     -- collected / destroyed, forget it
+		else
+			entry.model:PivotTo(batteryCFrame(entry.basePos, entry.phase))
+		end
+	end
+end)
+
+-- Fill the field when the server starts.
+for i = 1, BATTERY_COUNT do
+	spawnBattery()
+end

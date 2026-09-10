@@ -1,0 +1,29 @@
+# Roblox place files — these are big binary blobs that Git can't diff or merge.
+# The scripts under src/ are the real source of truth; the place file just holds
+# the world (baseplate, spawn pad, the Battery model in ServerStorage).
+*.rbxl
+*.rbxlx
+
+# Studio lock files and backups
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxl.bak
+*.rbxlx.bak
+*.rbxlx.old
+~$*
+
+# Rojo / tooling
+/build/
+*.log
+
+# One-off setup helpers (safe to delete once the repo is up)
+SETUP.bat
+_setup-log.txt
+_rojo-serve.txt
+
+# Editor and OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
