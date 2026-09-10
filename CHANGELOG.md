@@ -5,6 +5,62 @@ files hold the snapshot. Newest entries first.
 
 Script snapshots live in `Scripts/<ScriptName>/V<n>.txt`. Each version is a full
 copy of the script as it existed at that point, so you can diff any two versions.
+(Those numbered snapshots are retired as of 2026-09-10 — `src/` + git history +
+this file are the record now. The `Scripts/` folder is kept for early history.)
+
+---
+
+## 2026-09-10 — AI data center: dump batteries for timed Cash income
+
+**Goal (theme):** batteries are hoarded power. Carry them to the "AI data centre",
+dump them, and it runs for a while generating money. Bigger dump = longer run =
+more Cash. Upgrades to this process come later.
+
+### Added: `Cash` stat — `src/server/PlayerSetup.server.lua`
+- Second `IntValue` in `leaderstats` next to `Batteries`. Shows as a second
+  column in the top-right scoreboard, starts at 0.
+
+### Added (world geometry, place file only): `Workspace.DataCenter`
+- `Pad` (Part, 16x1x16, anchored) at (-19, 0.5, -3), just north of the spawn pad.
+  Dark when idle; turns Neon green while running.
+- `Sign` (tiny invisible part) holding a `BillboardGui` with "AI DATA CENTER" and
+  a status line ("OFFLINE" / "ONLINE").
+- NOT in the repo (the `.rbxl` is gitignored). If the place is ever rebuilt from
+  the repo, this model has to be recreated.
+
+### Added: `DataCenter` script — `src/server/DataCenter.server.lua`
+- CONFIG: `SECONDS_PER_BATTERY` (2), `CASH_PER_SECOND` (5), `PAYOUT_INTERVAL` (1),
+  `DUMP_DEBOUNCE` (1).
+- `Pad.Touched` by a player carrying batteries: set their `Batteries` to 0, add
+  `dumped * SECONDS_PER_BATTERY` seconds to that player's run timer (`runs[player]`).
+  Dumping again while running just extends the timer.
+- Payout loop (`task.spawn` + `while true do task.wait(1)`): once a second, every
+  active run pays `CASH_PER_SECOND` and loses 1 second; at 0 the run ends and the
+  data centre "powers down".
+- So total Cash from a dump = `batteries * SECONDS_PER_BATTERY * CASH_PER_SECOND`
+  (e.g. 2 batteries -> 4-second run -> 20 Cash).
+- Each player has an independent run; the Pad is only the trigger. Guards: a
+  1-second per-player debounce plus the "0 batteries = nothing to dump" check
+  (handles the `.Touched` burst).
+- Pad colour/material + sign text refresh whenever a run starts or ends. The sign
+  is looked up defensively so the feature still works if the model has no sign.
+
+**Concepts introduced:** a second currency and how `leaderstats` shows multiple
+columns; a server-owned per-player state table (`runs[player]`) driving a timed
+process; a fixed-interval loop (`task.wait(1)`) vs. the per-frame `Heartbeat`
+loops we've used before, and why a whole-second interval keeps `IntValue` maths
+clean; `PlayerRemoving` for state cleanup; world geometry vs. code (this platform
+is not version-controlled, only the script is).
+
+**Tested:** Play mode — dropped a player with 2 batteries on the pad: Batteries
+went to 0, pad turned Neon/ONLINE, Cash ticked 5 -> 10 -> 15 -> 20 over 4 seconds,
+then the run ended and the pad went dark/OFFLINE. Console logged the dump and the
+power-down. No errors.
+
+**Known rough edges:** the pad shows ONLINE if *any* player's run is active (one
+shared pad, per-player runs); standing still on the pad while a battery respawns
+onto you may not auto-dump until you move (`.Touched` needs a fresh contact);
+`DataCenter` model isn't in the repo.
 
 ---
 

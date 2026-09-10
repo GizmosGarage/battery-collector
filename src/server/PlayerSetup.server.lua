@@ -17,6 +17,12 @@ local function setupPlayer(player)
 	batteries.Name = "Batteries"
 	batteries.Value = 0
 	batteries.Parent = leaderstats
+
+	-- Cash: earned by dumping batteries at the AI data center (see DataCenter).
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Value = 0
+	cash.Parent = leaderstats
 end
 
 -- Fire setupPlayer for everyone who joins from now on.

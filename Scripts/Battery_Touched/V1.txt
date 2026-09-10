@@ -1,5 +1,0 @@
-local batteryPart = script.Parent
-
-batteryPart.Touched:Connect(function(hit)
-	print("Something touched the battery!")
-end)
