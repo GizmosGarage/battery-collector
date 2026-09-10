@@ -10,6 +10,44 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Battery size variety (AAA / C / D)
+
+**Goal:** the field spawns a random mix of battery sizes for visual variety.
+All sizes still count as **1** when collected — cosmetic only.
+
+### Added (world, place file only): 3 new models in `ServerStorage`
+- `Battery_AAA`, `Battery_C`, `Battery_D` — clones of the AA `Battery` model,
+  re-proportioned to real-world battery ratios (relative to AA 14.5mm x 50.5mm):
+  AAA x0.72 dia / x0.88 tall, C x1.81 / x0.99, D x2.36 / x1.22. Built by a one-off
+  Luau script (scale each part's Size on its local axes — every part has local X =
+  vertical — and its offset from the model centre; re-centre the pivot).
+- `Models/*.png` in the repo are the reference renders these were matched to.
+- Not version-controlled (`.rbxl` is gitignored; can't export `.rbxmx` via tools).
+
+### Changed: `src/server/BatterySpawner.server.lua`
+- `batteryTemplate` (one model) -> `BATTERY_TEMPLATES` list + a `templates` table
+  built at startup, each entry `{ model, height }` (height from `GetBoundingBox`).
+- `spawnBattery()` picks `templates[math.random(#templates)]`.
+- `CENTER_HEIGHT` (fixed centre Y) -> `BASE_HOVER` (1.8): each battery's centre is
+  floated at `BASE_HOVER + height/2`, so every size's **bottom** lines up at the
+  same height regardless of how tall it is.
+
+**No client change:** `BatterySpin` already works on any battery — all four models
+have the same 5 parts (`PART_COUNT`), and it pivots about the `SpawnCenter`
+attribute the server sets, whatever the size.
+
+**Concepts introduced:** non-uniform scaling of a model in code (per-part Size on
+local axes + per-part offset from centre); a "png is a picture, not a model" —
+the 3-D versions were built from the existing model, not imported; looking up a
+list of templates once and picking randomly; deriving spawn height from each
+template's own measured size so mixed sizes still sit level.
+
+**Tested (Play mode):** 15 batteries spawned as a random mix (saw AAA x4, AA x2,
+C x3, D x6), all four sizes present, all tilting/spinning on the client, all with
+`bottomY = 1.80`. No console errors.
+
+---
+
 ## 2026-09-10 — Upgrade shop (first UI, first RemoteEvent)
 
 **Goal:** a second platform that opens a shop UI with two upgrades — "run time

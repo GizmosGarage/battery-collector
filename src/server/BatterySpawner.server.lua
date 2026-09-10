@@ -2,7 +2,7 @@
 	BatterySpawner  --  Server Script, lives in ServerScriptService
 
 	The SERVER half of the batteries:
-	  1. clones a template model from ServerStorage
+	  1. clones one of the battery models from ServerStorage (random size)
 	  2. places each clone UPRIGHT at a random point in a square area (it hovers)
 	  3. tags it so the client's BatterySpin LocalScript will lean + spin it
 	  4. on a player touching a battery's Hitbox, adds 1 to their score
@@ -18,35 +18,45 @@ local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 
--- The model we copy. It lives in ServerStorage, so it never shows up in the
--- world on its own and never gets sent to players. Its pivot has been set to
--- the model's CENTRE, so PivotTo() rotates it around the middle.
-local batteryTemplate = ServerStorage:WaitForChild("Battery", 10)
-assert(batteryTemplate, "BatterySpawner: no 'Battery' template found in ServerStorage")
-
 -- ============================ CONFIG ============================
 -- Change these numbers to retune the game. Everything below reads from here.
 local BATTERY_COUNT = 15                       -- how many batteries exist at once
 local AREA_CENTER   = Vector3.new(-5, 0, -21)  -- middle of the spawn field (near the spawn pad)
 local AREA_SIZE     = 120                      -- batteries spawn inside a 120 x 120 stud square
-local CENTER_HEIGHT = 3                        -- height of a battery's CENTRE above the baseplate (so it hovers, clear of the floor when leaning)
+local BASE_HOVER    = 1.8                      -- how far a battery's BOTTOM floats above the baseplate
 local RESPAWN_DELAY = 3                        -- seconds between a battery being collected and a new one appearing
 local BATTERY_TAG   = "BatteryPickup"          -- CollectionService tag the client watches for
+
+-- The battery models to clone, all in ServerStorage. Each has its pivot set to
+-- its own CENTRE (so PivotTo rotates it around the middle). Every size counts as
+-- 1 when collected -- the four sizes are purely visual variety.
+local BATTERY_TEMPLATES = { "Battery", "Battery_AAA", "Battery_C", "Battery_D" }
 -- ==============================================================
 
--- Pick a random hover position inside the square.
-local function randomCenterPosition()
+-- Look each template up once, and remember its height so we can float different
+-- sizes with their bottoms lined up.
+local templates = {}   -- { { model = Model, height = number }, ... }
+for _, name in BATTERY_TEMPLATES do
+	local model = ServerStorage:WaitForChild(name, 10)
+	assert(model, "BatterySpawner: missing template '" .. name .. "' in ServerStorage")
+	local _, size = model:GetBoundingBox()
+	table.insert(templates, { model = model, height = size.Y })
+end
+
+-- Pick a random hover position inside the square, for a battery `height` tall.
+local function randomCenterPosition(height)
 	local half = AREA_SIZE / 2
 	local x = AREA_CENTER.X + math.random(-half, half)
 	local z = AREA_CENTER.Z + math.random(-half, half)
-	return Vector3.new(x, CENTER_HEIGHT, z)
+	return Vector3.new(x, BASE_HOVER + height / 2, z)
 end
 
 -- Create one battery and wire up what happens when it's collected.
 local function spawnBattery()
-	local battery = batteryTemplate:Clone()
+	local pick = templates[math.random(#templates)]
+	local battery = pick.model:Clone()
 
-	local centerPos = randomCenterPosition()
+	local centerPos = randomCenterPosition(pick.height)
 	battery:PivotTo(CFrame.new(centerPos))          -- upright; the client applies the lean + spin
 	battery:SetAttribute("SpawnCenter", centerPos)  -- the client reads this to know the point to pivot around
 	CollectionService:AddTag(battery, BATTERY_TAG)
