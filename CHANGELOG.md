@@ -6,7 +6,46 @@ files hold the snapshot. Newest entries first.
 Script snapshots live in `Scripts/<ScriptName>/V<n>.txt`. Each version is a full
 copy of the script as it existed at that point, so you can diff any two versions.
 (Those numbered snapshots are retired as of 2026-09-10 — `src/` + git history +
-this file are the record now. The `Scripts/` folder is kept for early history.)
+this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
+
+---
+
+## 2026-09-10 — Data-center pad is now per-player, not shared
+
+**Goal:** the pad should look "ONLINE" (glowing) only for the player whose own
+dump is currently paying out — not for everyone whenever anyone's run is active.
+
+The payout was already per-player (`runs[player]`); only the *visual* was shared,
+because one Part's `Color`/`Material` set on the server replicates to everyone the
+same way. Fix: move the visual to the client.
+
+### Changed: `src/server/DataCenter.server.lua`
+- Removed all pad `Color`/`Material` and sign `Text` writes, plus `anyRunActive()`
+  and `refreshVisuals()`.
+- Added `publish(player)` → `player:SetAttribute("DataCenterSecondsLeft", runs[player] or 0)`,
+  called on every dump, every payout tick, and on player join. This is the one
+  value each client needs.
+
+### Added: `src/client/DataCenterDisplay.client.lua` (LocalScript)
+- Reads `LocalPlayer:GetAttribute("DataCenterSecondsLeft")`, and on
+  `GetAttributeChangedSignal` sets the Pad's colour/material and the sign text
+  **locally**. A local property change to a shared part only affects that
+  client's view, so each player sees the pad reflect their own run (sign now also
+  shows a live "ONLINE  Ns" countdown).
+
+**Concepts introduced:** why a shared world part can't show different things to
+different players from the server, and the fix — publish a per-player value
+(here a Player attribute) and let each client render from its own copy; local
+vs. replicated property writes on a shared instance.
+
+**Tested:** server sets the attribute → client sees it, pad goes Neon + sign
+reads "ONLINE  Ns" on that client only; server's own view of the pad stays
+SmoothPlastic throughout (server never touches it). Dump of 3 batteries paid
+5→10→15→30 over 6s then powered down. No errors.
+
+**Note:** Player attributes replicate to *all* clients, so technically another
+player could read your `DataCenterSecondsLeft`. Harmless here; a RemoteEvent to
+just the owner would be the private version if it ever mattered.
 
 ---
 

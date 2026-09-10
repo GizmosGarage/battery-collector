@@ -26,38 +26,21 @@ local PAYOUT_INTERVAL     = 1   -- seconds between payouts (keep at 1 for whole-
 local DUMP_DEBOUNCE       = 1   -- ignore repeat touches from the same player for this long
 -- ==============================================================
 
-local PAD_COLOR_OFF = Color3.fromRGB(40, 40, 45)
-local PAD_COLOR_ON  = Color3.fromRGB(60, 230, 140)
-
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
 assert(dataCenter, "DataCenter: no 'DataCenter' model found in Workspace (it lives in the place file)")
 local pad = dataCenter:WaitForChild("Pad")
-
--- The floating status label is optional -- the feature still works without it.
-local statusLabel = dataCenter:FindFirstChild("Sign")
-	and dataCenter.Sign:FindFirstChild("Billboard")
-	and dataCenter.Sign.Billboard:FindFirstChild("Status")
 
 -- player -> seconds of run time left
 local runs = {}
 -- player -> os.clock() of their last dump (debounce)
 local lastDump = {}
 
-local function anyRunActive()
-	for _ in runs do
-		return true
-	end
-	return false
-end
-
--- Reflect on/off state on the pad and the sign.
-local function refreshVisuals()
-	local on = anyRunActive()
-	pad.Color = on and PAD_COLOR_ON or PAD_COLOR_OFF
-	pad.Material = on and Enum.Material.Neon or Enum.Material.SmoothPlastic
-	if statusLabel then
-		statusLabel.Text = on and "ONLINE" or "OFFLINE"
-	end
+-- Tell THIS player's client how much run time they have left. The Pad is one
+-- shared part, so its "ONLINE" glow is drawn per-client from this attribute
+-- (see src/client/DataCenterDisplay.client.lua) -- if the server lit the Pad,
+-- everyone would see it lit whenever anyone's run was active.
+local function publish(player)
+	player:SetAttribute("DataCenterSecondsLeft", runs[player] or 0)
 end
 
 local function getStat(player, name)
@@ -87,7 +70,7 @@ pad.Touched:Connect(function(hit)
 	lastDump[player] = now
 
 	runs[player] = (runs[player] or 0) + dumped * SECONDS_PER_BATTERY
-	refreshVisuals()
+	publish(player)
 
 	print(string.format(
 		"%s dumped %d batteries -> data center runs %d more seconds (now %d)",
@@ -119,10 +102,14 @@ task.spawn(function()
 				runs[player] = nil
 				print(player.Name .. "'s data center powered down")
 			end
-		end
 
-		refreshVisuals()
+			publish(player)   -- keep this player's client in sync each tick
+		end
 	end
 end)
 
-refreshVisuals()
+-- Make sure every player has the attribute from the start (0 = OFFLINE).
+Players.PlayerAdded:Connect(publish)
+for _, player in Players:GetPlayers() do
+	publish(player)
+end
