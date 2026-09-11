@@ -80,4 +80,14 @@ function Upgrades.formatEffect(id, value)
 	return string.format("%d%s", value, d.unit)
 end
 
+-- How much power (mAh/sec) the data center's GPUs need to sustain a given Cash
+-- upgrade level -- each level is another GPU unit added, and more GPUs need
+-- more power. Currently a READOUT (shown on the DataCenter sign) so upgrading
+-- Cash visibly costs something even though nothing enforces it yet.
+local CASH_POWER_RATIO = 2   -- mAh/sec of draw per 1 Cash/sec of payout
+
+function Upgrades.powerNeeded(cashLevel)
+	return Upgrades.effect("Cash", cashLevel) * CASH_POWER_RATIO
+end
+
 return Upgrades

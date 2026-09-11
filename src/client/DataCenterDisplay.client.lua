@@ -10,9 +10,18 @@
 	Player ("DataCenterSecondsLeft", set by DataCenter.server.lua). We read our
 	own, then set the Pad's colour/material and the sign text locally. Local
 	property changes to a shared part only affect our own view.
+
+	The sign also shows how much power (mAh/sec) THIS player's data center needs
+	to run at their current Cash upgrade level -- more Cash levels bought (more
+	GPU units added) means a bigger draw. That number comes straight from the
+	shared Upgrades module, so it always matches what the shop shows.
 --]]
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
+
 local LocalPlayer = Players.LocalPlayer
 
 local PAD_COLOR_OFF = Color3.fromRGB(40, 40, 45)
@@ -25,6 +34,7 @@ local pad = dataCenter:WaitForChild("Pad")
 local sign = dataCenter:WaitForChild("Sign", 5)
 local billboard = sign and sign:WaitForChild("Billboard", 5)
 local statusLabel = billboard and billboard:WaitForChild("Status", 5)
+local powerLabel = billboard and billboard:WaitForChild("PowerDraw", 5)
 
 local function render()
 	local secondsLeft = LocalPlayer:GetAttribute("DataCenterSecondsLeft") or 0
@@ -36,7 +46,13 @@ local function render()
 	if statusLabel then
 		statusLabel.Text = online and string.format("ONLINE  %ds", secondsLeft) or "OFFLINE"
 	end
+
+	if powerLabel then
+		local draw = Upgrades.powerNeeded(LocalPlayer:GetAttribute("CashLevel") or 0)
+		powerLabel.Text = string.format("Needs %d mAh/s to run", draw)
+	end
 end
 
 LocalPlayer:GetAttributeChangedSignal("DataCenterSecondsLeft"):Connect(render)
+LocalPlayer:GetAttributeChangedSignal("CashLevel"):Connect(render)   -- power draw changes when Cash is upgraded
 render()

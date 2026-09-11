@@ -10,6 +10,44 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Data center displays the power its GPUs need
+
+**Goal:** upgrading Cash-per-second should visibly cost something -- "adding a
+GPU unit" needs more power to run -- and the data center should show that draw
+so upgrading feels consequential, not just a bigger number.
+
+### `Upgrades.lua` — a new formula, not a new upgrade
+- `Upgrades.powerNeeded(cashLevel)` = `Upgrades.effect("Cash", cashLevel) *
+  CASH_POWER_RATIO` (ratio = 2). Derived directly from the Cash payout rate --
+  not a separate purchasable stat -- so it's always exactly "2 mAh/sec of draw
+  per 1 Cash/sec you've bought." Level 0: 10 mAh/s. Level 2: 18 mAh/s.
+- **This is a readout, not a hard limit yet** -- nothing currently stops the data
+  center from running even if you have no mAh reserve to match the draw. A
+  natural next step if you want it to actually bite.
+
+### World geometry (place file only): `DataCenter.Sign.Billboard`
+- Grew from 2 lines to 3 (280x130). New `PowerDraw` TextLabel under `Status`.
+
+### `DataCenterDisplay.client.lua`
+- Now also `require`s `Upgrades`. Renders `powerLabel.Text = "Needs %d mAh/s to
+  run"` from **the local player's own** `CashLevel` attribute -- same
+  per-client-only pattern as the ONLINE/OFFLINE status (one shared sign, each
+  player sees their own number). Refreshes on `CashLevel` changes (bought Cash)
+  as well as the existing `DataCenterSecondsLeft` trigger.
+
+**Concepts introduced:** deriving a new stat from an EXISTING one instead of
+inventing a parallel value (power draw is just Cash-rate times a constant, so it
+can never drift out of sync); a readout that's real and wired to live data but
+not yet load-bearing -- a deliberate, honest middle step before deciding whether
+to make it a hard constraint.
+
+**Tested:** sign read "Needs 10 mAh/s to run" at CashLevel 0. Bought Cash twice
+through the real purchase flow (CashLevel 0->2, Cash 500->375); sign updated
+live to "Needs 18 mAh/s to run" (effect(Cash,2)=9, 9*2=18), matching the formula
+exactly. No console errors.
+
+---
+
 ## 2026-09-10 — Walk through batteries once you're full
 
 **Goal:** when your carry capacity is full, BatterySpawner already ignores the
