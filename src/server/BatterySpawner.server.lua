@@ -45,9 +45,9 @@ local BATTERY_TEMPLATES = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }
 local RARITY_FALLOFF = 3
 
 -- Battery capacity (mAh) also scales by the SAME falloff, so a battery is worth
--- as much power as it is rare: AAA = BASE_MAH, and each rarer size is
--- RARITY_FALLOFF times that. At BASE_MAH 500: AAA 500 / AA 1500 / C 4500 / D 13500.
-local BASE_MAH = 500
+-- as much power as it is rare: AAA = Upgrades.BASE_BATTERY_MAH, and each rarer
+-- size is RARITY_FALLOFF times that (AAA 500 / AA 1500 / C 4500 / D 13500). This
+-- is the SAME constant the data center's base power need is anchored to.
 
 -- How long an uncollected battery sticks around before it vanishes and
 -- reappears elsewhere. Rarer sizes live this many times LESS long, so a D
@@ -72,7 +72,7 @@ for i, name in BATTERY_TEMPLATES do
 		model = model,
 		height = size.Y,
 		weight = weight,
-		mah = math.floor(BASE_MAH * RARITY_FALLOFF ^ (i - 1)),
+		mah = math.floor(Upgrades.BASE_BATTERY_MAH * RARITY_FALLOFF ^ (i - 1)),
 		rarity = i,
 		lifetime = BASE_LIFETIME / LIFETIME_FALLOFF ^ (i - 1),
 	})

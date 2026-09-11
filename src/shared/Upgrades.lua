@@ -18,6 +18,13 @@ local Upgrades = {}
 -- Display / iteration order for the shop UI.
 Upgrades.order = { "Speed", "Capacity", "Seconds", "Cash" }
 
+-- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales every
+-- other size up from this by the same RARITY_FALLOFF it uses for spawn odds
+-- (AAA 500 / AA 1500 / C 4500 / D 13500), and the data center's base power need
+-- (below) is anchored to this SAME number -- so "a battery's worth of power"
+-- means the same thing everywhere it's used, not two numbers that happen to match.
+Upgrades.BASE_BATTERY_MAH = 500
+
 Upgrades.defs = {
 	Speed = {
 		name = "Walk speed",
@@ -82,9 +89,11 @@ end
 
 -- How much power (mAh/sec) the data center's GPUs need to sustain a given Cash
 -- upgrade level -- each level is another GPU unit added, and more GPUs need
--- more power. Currently a READOUT (shown on the DataCenter sign) so upgrading
--- Cash visibly costs something even though nothing enforces it yet.
-local CASH_POWER_RATIO = 2   -- mAh/sec of draw per 1 Cash/sec of payout
+-- more power. Anchored so the BASE (level 0) need is exactly one AAA battery's
+-- worth of power per second -- "the data center burns a battery a second just to
+-- stay on." Currently a READOUT (shown on the DataCenter sign), not yet
+-- enforced against a power reserve.
+local CASH_POWER_RATIO = Upgrades.BASE_BATTERY_MAH / Upgrades.defs.Cash.base   -- mAh/sec of draw per 1 Cash/sec of payout
 
 function Upgrades.powerNeeded(cashLevel)
 	return Upgrades.effect("Cash", cashLevel) * CASH_POWER_RATIO

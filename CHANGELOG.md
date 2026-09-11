@@ -10,6 +10,44 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Power need anchored to a battery's worth (500, not 10)
+
+**The bug report:** the sign read "Needs 10 mAh/s to run" at level 0; expected
+500. Checked both the repo and live Studio — they agreed with each other and
+with the formula as written (`Cash.base(5) * CASH_POWER_RATIO(2) = 10`), so this
+wasn't drift or a mirroring bug. The `500` the user had in mind was `BASE_MAH`,
+a *different* constant (a single battery's capacity) that the power formula
+never referenced. Once that was clear, the fix was to make power need actually
+derive from that number, not to fudge the ratio to coincidentally output 500.
+
+### `Upgrades.lua`
+- New `Upgrades.BASE_BATTERY_MAH = 500` -- the shared constant both battery
+  value AND data-center power need are now anchored to.
+- `CASH_POWER_RATIO` is no longer a bare `2` -- it's computed as
+  `Upgrades.BASE_BATTERY_MAH / Upgrades.defs.Cash.base`, so level 0's power
+  need is *exactly* one AAA battery's worth per second, by construction. If
+  `BASE_BATTERY_MAH` or `Cash.base` ever change, the ratio recalculates itself
+  -- it can't quietly drift out of sync the way two independent numbers could.
+
+### `BatterySpawner.server.lua`
+- Its own local `BASE_MAH = 500` is gone; battery mAh values now read
+  `Upgrades.BASE_BATTERY_MAH` from the shared module instead of keeping a
+  private copy of the same number.
+
+**Concepts introduced:** the difference between "the UI is wrong" and "the UI is
+right but the code encodes the wrong intent" -- verified both the repo and the
+live Studio state before changing anything, rather than assuming either the
+report or the code was correct; eliminating a duplicated magic number by moving
+it to the one shared module both consumers already required, so it's
+structurally impossible for the two to disagree again.
+
+**Tested:** sign reads "Needs 500 mAh/s to run" at Cash level 0. Bought Cash
+twice (level 0->2) through the real purchase flow: sign updated to "Needs 900
+mAh/s to run" (effect(Cash,2)=9, 9*100=900). Battery mAh values unchanged and
+correct (AAA 500, AA 1500). No console errors.
+
+---
+
 ## 2026-09-10 — Data center displays the power its GPUs need
 
 **Goal:** upgrading Cash-per-second should visibly cost something -- "adding a
