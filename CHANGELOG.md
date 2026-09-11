@@ -10,6 +10,50 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Rarity glow so battery value reads at a distance
+
+**Goal:** the four sizes look similar from afar. Add a glow that escalates with
+rarity: AAA static small gold glow -> AA bigger + pulsing -> C bigger/brighter +
+white sparkle particles -> D biggest + most solid, keeping motion and particles.
+
+### Changed: `BatterySpawner.server.lua`
+- Each template entry now also carries `rarity` (its 1-based position in
+  `BATTERY_TEMPLATES`, 1 = commonest). Every spawned battery gets a `Rarity`
+  attribute (1..4) alongside `SpawnCenter` and `mAh`.
+
+### Added: `src/client/BatteryGlow.client.lua` (LocalScript)
+- A `TIERS[1..4]` table: `color`, `glowScale` (glow diameter as a multiple of the
+  battery's own diameter), `transparency`, `brightness`, and for tiers 2-4
+  `pulse`/`pulseAmplitude`/`pulseSpeed`, and for tiers 3-4 `particles` +
+  `particleColor`.
+- Same tracking pattern as `BatterySpin`: watches the `BatteryPickup` tag, waits
+  for `SpawnCenter` + `Rarity` + all 5 parts to have replicated before building
+  anything (same replication-race fix learned earlier).
+- Per battery, builds a `Neon` `Ball` Part ("RarityGlow") sized off
+  `lower_body.Size.Y * tier.glowScale`, plus a `PointLight`, plus (tier 3-4) a
+  `ParticleEmitter` of small white-to-gold sparkles.
+- **The glow is parented INSIDE the battery model**, not tracked separately -- when
+  the server destroys a collected battery, the glow/light/particles are destroyed
+  with it automatically. No manual cleanup code needed.
+- A `Heartbeat` loop pulses `pulse`-tier glows: `size = base * (1 + sin(t*speed +
+  phase) * amplitude)`, each battery's `phase` randomised so they don't sync up.
+
+**Concepts introduced:** parenting client-only cosmetic objects inside a
+server-owned instance so their lifetime is handled for free; a per-tier config
+table driving both visuals and behaviour from one place; `ParticleEmitter`
+basics (`Rate`, `Lifetime`, `Speed`, `Size`/`Transparency` as `NumberSequence`,
+`LightEmission` for an additive glint look); a sine-wave pulse with per-instance
+phase offsets (same trick as the battery spin's phase).
+
+**Tested (Play mode):** confirmed via script -- AAA glow constant at 1.47 studs
+(static); AA glow oscillating 2.20-2.94 studs over time (pulsing); C glow bigger,
+brighter, with a live `ParticleEmitter` (`Enabled=true`, emitting). Screenshots:
+a wide shot shows glow size/brightness clearly separating battery tiers at a
+distance; a close shot on a C battery shows visible white sparkle particles
+against its gold glow. No console errors.
+
+---
+
 ## 2026-09-10 — Batteries carry mAh; scoreboard is capacity, not count
 
 **Goal:** rarer battery = more power. The score is battery **capacity (mAh)**, not

@@ -44,9 +44,11 @@ local BASE_MAH = 500
 -- ==============================================================
 
 -- Look each template up once. Record its height (to float sizes with their
--- bottoms lined up), its spawn weight (falloff ^ steps-from-the-rarest), and its
--- mAh value (falloff ^ steps-from-the-commonest).
-local templates = {}   -- { { model, height, weight, mah }, ... }
+-- bottoms lined up), its spawn weight (falloff ^ steps-from-the-rarest), its mAh
+-- value (falloff ^ steps-from-the-commonest), and its rarity rank (1 = commonest,
+-- matching BATTERY_TEMPLATES' order) -- the client's BatteryGlow script uses the
+-- rank to pick how flashy a battery's glow should be.
+local templates = {}   -- { { model, height, weight, mah, rarity }, ... }
 local totalWeight = 0
 for i, name in BATTERY_TEMPLATES do
 	local model = ServerStorage:WaitForChild(name, 10)
@@ -59,6 +61,7 @@ for i, name in BATTERY_TEMPLATES do
 		height = size.Y,
 		weight = weight,
 		mah = math.floor(BASE_MAH * RARITY_FALLOFF ^ (i - 1)),
+		rarity = i,
 	})
 end
 
@@ -91,6 +94,7 @@ local function spawnBattery()
 	battery:PivotTo(CFrame.new(centerPos))          -- upright; the client applies the lean + spin
 	battery:SetAttribute("SpawnCenter", centerPos)  -- the client reads this to know the point to pivot around
 	battery:SetAttribute("mAh", pick.mah)           -- this battery's capacity (for anything that inspects it)
+	battery:SetAttribute("Rarity", pick.rarity)     -- 1 (AAA) .. 4 (D); the client uses this to pick a glow tier
 	CollectionService:AddTag(battery, BATTERY_TAG)
 	battery.Parent = workspace                      -- set parent LAST, so it replicates with attribute + tag already on it
 
