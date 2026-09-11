@@ -1,18 +1,15 @@
 --[[
 	DataCenter  --  Server Script, lives in ServerScriptService
 
-	The dump-off loop. Walk onto Workspace.DataCenter.Pad carrying batteries and
-	they all get fed into the "AI data center": your Batteries count drops to 0,
+	The dump-off loop. Walk onto Workspace.DataCenter.Pad carrying battery
+	capacity and it all gets fed into the "AI data center": your mAh drops to 0,
 	and the data center runs for a while, paying you Cash every second.
 
-		run time added   = batteriesDumped * SECONDS_PER_BATTERY
-		cash while running = CASH_PER_SECOND every second, until the time runs out
-		so total cash     = batteriesDumped * SECONDS_PER_BATTERY * CASH_PER_SECOND
+		run time added    = (mAh dumped / 1000) * secondsPer1000Mah   (Seconds upgrade)
+		cash while running = cashPerSecond every second                (Cash upgrade)
 
 	Dumping again while it's still running just adds more seconds to the timer.
 	Each player has their own independent run; the Pad is only the trigger.
-
-	(Upgrades that change these numbers are a later step.)
 
 	Note: the DataCenter model lives in the .rbxl place file, not in this repo.
 --]]
@@ -23,9 +20,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 
 -- ============================ CONFIG ============================
-local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 for whole-second math)
-local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for this long
--- SECONDS_PER_BATTERY and CASH_PER_SECOND now come per-player from the Upgrades
+local PAYOUT_INTERVAL = 1      -- seconds between payouts (keep at 1 for whole-second math)
+local DUMP_DEBOUNCE   = 1      -- ignore repeat touches from the same player for this long
+local MAH_PER_RUNTIME = 1000   -- how much dumped mAh buys one "unit" of the Seconds upgrade's run time
+-- The per-second cash and the run time per unit come per-player from the Upgrades
 -- module, scaled by that player's purchased upgrade levels.
 -- ==============================================================
 
@@ -63,24 +61,24 @@ pad.Touched:Connect(function(hit)
 		return
 	end
 
-	local batteries = getStat(player, "Batteries")
-	if not batteries or batteries.Value <= 0 then
+	local mah = getStat(player, "mAh")
+	if not mah or mah.Value <= 0 then
 		return   -- nothing to dump
 	end
 
-	local dumped = batteries.Value
-	batteries.Value = 0
+	local dumped = mah.Value
+	mah.Value = 0
 	lastDump[player] = now
 
-	-- Runtime each battery is worth for THIS player (their Seconds upgrade level).
-	local secondsPerBattery = Upgrades.effect("Seconds", player:GetAttribute("SecondsLevel") or 0)
-	local addedSeconds = math.floor(dumped * secondsPerBattery)
+	-- Run time per 1000 mAh for THIS player (their Seconds upgrade level).
+	local secondsPerUnit = Upgrades.effect("Seconds", player:GetAttribute("SecondsLevel") or 0)
+	local addedSeconds = math.floor((dumped / MAH_PER_RUNTIME) * secondsPerUnit)
 
 	runs[player] = (runs[player] or 0) + addedSeconds
 	publish(player)
 
 	print(string.format(
-		"%s dumped %d batteries -> data center runs %d more seconds (now %d)",
+		"%s dumped %d mAh -> data center runs %d more seconds (now %d)",
 		player.Name, dumped, addedSeconds, runs[player]
 	))
 end)

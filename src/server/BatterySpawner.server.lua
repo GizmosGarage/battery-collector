@@ -5,7 +5,7 @@
 	  1. clones one of the battery models from ServerStorage (random size)
 	  2. places each clone UPRIGHT at a random point in a square area (it hovers)
 	  3. tags it so the client's BatterySpin LocalScript will lean + spin it
-	  4. on a player touching a battery's Hitbox, adds 1 to their score
+	  4. on a player touching a battery's Hitbox, adds that battery's mAh to their score
 	  5. a few seconds after a battery is collected, spawns a fresh one elsewhere
 
 	The lean and spin are PURELY VISUAL and now live in the client LocalScript
@@ -36,11 +36,17 @@ local BATTERY_TEMPLATES = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }
 -- so the odds fall off exponentially. With 4 sizes and a falloff of 3 the mix is
 -- roughly AAA 68% / AA 22% / C 7% / D 3%.
 local RARITY_FALLOFF = 3
+
+-- Battery capacity (mAh) also scales by the SAME falloff, so a battery is worth
+-- as much power as it is rare: AAA = BASE_MAH, and each rarer size is
+-- RARITY_FALLOFF times that. At BASE_MAH 500: AAA 500 / AA 1500 / C 4500 / D 13500.
+local BASE_MAH = 500
 -- ==============================================================
 
 -- Look each template up once. Record its height (to float sizes with their
--- bottoms lined up) and its spawn weight (falloff ^ steps-from-the-rarest).
-local templates = {}   -- { { model = Model, height = number, weight = number }, ... }
+-- bottoms lined up), its spawn weight (falloff ^ steps-from-the-rarest), and its
+-- mAh value (falloff ^ steps-from-the-commonest).
+local templates = {}   -- { { model, height, weight, mah }, ... }
 local totalWeight = 0
 for i, name in BATTERY_TEMPLATES do
 	local model = ServerStorage:WaitForChild(name, 10)
@@ -48,7 +54,12 @@ for i, name in BATTERY_TEMPLATES do
 	local _, size = model:GetBoundingBox()
 	local weight = RARITY_FALLOFF ^ (#BATTERY_TEMPLATES - i)
 	totalWeight += weight
-	table.insert(templates, { model = model, height = size.Y, weight = weight })
+	table.insert(templates, {
+		model = model,
+		height = size.Y,
+		weight = weight,
+		mah = math.floor(BASE_MAH * RARITY_FALLOFF ^ (i - 1)),
+	})
 end
 
 -- Pick a template at random, biased by weight -- commoner sizes win more often.
@@ -79,6 +90,7 @@ local function spawnBattery()
 	local centerPos = randomCenterPosition(pick.height)
 	battery:PivotTo(CFrame.new(centerPos))          -- upright; the client applies the lean + spin
 	battery:SetAttribute("SpawnCenter", centerPos)  -- the client reads this to know the point to pivot around
+	battery:SetAttribute("mAh", pick.mah)           -- this battery's capacity (for anything that inspects it)
 	CollectionService:AddTag(battery, BATTERY_TAG)
 	battery.Parent = workspace                      -- set parent LAST, so it replicates with attribute + tag already on it
 
@@ -98,10 +110,11 @@ local function spawnBattery()
 
 		collected = true
 
+		-- Add this battery's capacity to the player's carried mAh.
 		local leaderstats = player:FindFirstChild("leaderstats")
-		local batteries = leaderstats and leaderstats:FindFirstChild("Batteries")
-		if batteries then
-			batteries.Value += 1
+		local mah = leaderstats and leaderstats:FindFirstChild("mAh")
+		if mah then
+			mah.Value += pick.mah
 		end
 
 		battery:Destroy()

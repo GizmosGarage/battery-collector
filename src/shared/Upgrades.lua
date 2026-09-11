@@ -12,8 +12,8 @@ local Upgrades = {}
 
 Upgrades.defs = {
 	Seconds = {
-		name = "Run time per battery",
-		base = 2,        -- seconds of data-center runtime each battery buys, at level 0
+		name = "Run time per 1000 mAh",
+		base = 2,        -- seconds of data-center runtime each 1000 mAh dumped buys, at level 0
 		perLevel = 0.5,  -- each level adds this much
 		unit = "s",
 		baseCost = 50,   -- Cash to go from level 0 -> 1

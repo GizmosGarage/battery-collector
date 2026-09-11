@@ -10,6 +10,48 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Batteries carry mAh; scoreboard is capacity, not count
+
+**Goal:** rarer battery = more power. The score is battery **capacity (mAh)**, not
+a count. (Voltage would be wrong — real AAA/AA/C/D are all 1.5 V; only capacity
+grows with size.)
+
+### `BatterySpawner.server.lua`
+- New config `BASE_MAH = 500`. Each template's mAh =
+  `math.floor(BASE_MAH * RARITY_FALLOFF ^ (i - 1))` — the exact inverse of its
+  spawn weight, so value tracks rarity off the same knob:
+  AAA 500 / AA 1500 / C 4500 / D 13500.
+- Each spawned battery gets a `mAh` attribute.
+- Collecting adds `pick.mah` to the score (was `+= 1`).
+
+### `PlayerSetup.server.lua`
+- The `Batteries` IntValue is now `mAh` (0-based). Scoreboard column reads "mAh".
+
+### `PlayerSpeed.server.lua`
+- Reads `leaderstats.mAh`. `SPEED_PER_BATTERY` (1.5/battery) -> `SPEED_PER_1000_MAH`
+  (1.5 per 1000 mAh): `WalkSpeed = BASE + (mAh / 1000) * SPEED_PER_1000_MAH`, cap 60.
+
+### `DataCenter.server.lua`
+- Dumps `leaderstats.mAh` (was `Batteries`), zeroes it.
+- New config `MAH_PER_RUNTIME = 1000`. Run time added =
+  `floor((mAh dumped / 1000) * Upgrades.effect("Seconds", level))`.
+
+### `Upgrades.lua`
+- "Seconds" upgrade renamed "Run time per 1000 mAh" (base/perLevel/cost unchanged:
+  2 s per 1000 mAh at level 0, +0.5 per level).
+
+**Concepts introduced:** picking the right real-world unit (capacity vs voltage);
+one knob (`RARITY_FALLOFF`) driving two coupled things (how rare, how valuable);
+renaming a value that many systems read, and rescaling the formulas that consumed
+the old "count" meaning into a "per 1000 units" form so coefficients stay legible.
+
+**Tested (Play mode):** scoreboard shows mAh + Cash (no Batteries). Live batteries
+carry mAh 500 / 1500 / 4500 by type. mAh 0 -> speed 4; mAh 10000 -> speed 19
+(4 + 10*1.5). Dumped 10000 mAh -> mAh 0, run 20 s (10 * 2), Cash paid 5/s, speed
+back to 4. Shop row reads "Run time per 1000 mAh  2.0s -> 2.5s". No errors.
+
+---
+
 ## 2026-09-10 — Battery sizes spawn at exponentially-falling rates
 
 **Goal:** AAA is commonest, D is rarest, and each size in between is a constant

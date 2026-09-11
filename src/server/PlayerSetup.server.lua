@@ -13,10 +13,12 @@ local function setupPlayer(player)
 
 	-- An IntValue holds a whole number. Its Name is what shows as the column
 	-- header, and its Value (starting at 0) is what shows per player.
-	local batteries = Instance.new("IntValue")
-	batteries.Name = "Batteries"
-	batteries.Value = 0
-	batteries.Parent = leaderstats
+	-- mAh = total battery capacity carried (each battery adds its own mAh; bigger,
+	-- rarer batteries are worth more). Dumped at the data center for Cash.
+	local mah = Instance.new("IntValue")
+	mah.Name = "mAh"
+	mah.Value = 0
+	mah.Parent = leaderstats
 
 	-- Cash: earned by dumping batteries at the AI data center (see DataCenter).
 	local cash = Instance.new("IntValue")

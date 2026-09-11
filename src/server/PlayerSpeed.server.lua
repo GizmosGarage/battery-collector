@@ -1,31 +1,31 @@
 --[[
 	PlayerSpeed  --  Server Script, lives in ServerScriptService
 
-	The player starts slow and speeds up with every battery collected.
-	(Theme: the more power you've hoarded, the more capacity you have.)
+	The player starts slow and speeds up the more battery capacity they carry.
+	(Theme: the more power you've hoarded, the more you can do.)
 
-		WalkSpeed = BASE_WALKSPEED + (batteries collected * SPEED_PER_BATTERY)
+		WalkSpeed = BASE_WALKSPEED + (carried mAh / 1000) * SPEED_PER_1000_MAH
 		           capped at MAX_WALKSPEED
 
-	Driven off leaderstats.Batteries, which the server owns, so speed always
-	matches the real score.
+	Driven off leaderstats.mAh, which the server owns, so speed always matches
+	the real score. Dumping at the data center zeroes mAh, dropping speed back.
 --]]
 
 local Players = game:GetService("Players")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 -- ============================ CONFIG ============================
-local BASE_WALKSPEED    = 4     -- Roblox default is 16; this is a slow trudge
-local SPEED_PER_BATTERY = 1.5   -- studs/second added per battery collected
-local MAX_WALKSPEED     = 60    -- upper limit, so it stays controllable
+local BASE_WALKSPEED     = 4     -- Roblox default is 16; this is a slow trudge
+local SPEED_PER_1000_MAH = 1.5   -- studs/second added for every 1000 mAh carried
+local MAX_WALKSPEED      = 60    -- upper limit, so it stays controllable
 -- ==============================================================
 
 -- Make new characters spawn already slow, instead of flashing normal speed for
 -- a frame before this script catches them.
 StarterPlayer.CharacterWalkSpeed = BASE_WALKSPEED
 
-local function speedForCount(count)
-	return math.min(BASE_WALKSPEED + count * SPEED_PER_BATTERY, MAX_WALKSPEED)
+local function speedForMah(mah)
+	return math.min(BASE_WALKSPEED + (mah / 1000) * SPEED_PER_1000_MAH, MAX_WALKSPEED)
 end
 
 -- Push the right WalkSpeed onto a player's current character, if they have one.
@@ -39,11 +39,11 @@ local function applySpeed(player)
 		return
 	end
 
-	local batteries = player:FindFirstChild("leaderstats")
-		and player.leaderstats:FindFirstChild("Batteries")
-	local count = (batteries and batteries.Value) or 0
+	local mahValue = player:FindFirstChild("leaderstats")
+		and player.leaderstats:FindFirstChild("mAh")
+	local mah = (mahValue and mahValue.Value) or 0
 
-	humanoid.WalkSpeed = speedForCount(count)
+	humanoid.WalkSpeed = speedForMah(mah)
 end
 
 local function onPlayerAdded(player)
@@ -54,8 +54,8 @@ local function onPlayerAdded(player)
 	end)
 
 	-- Wait for PlayerSetup to have created the counter, then react to every change.
-	local batteries = player:WaitForChild("leaderstats"):WaitForChild("Batteries")
-	batteries.Changed:Connect(function()
+	local mahValue = player:WaitForChild("leaderstats"):WaitForChild("mAh")
+	mahValue.Changed:Connect(function()
 		applySpeed(player)
 	end)
 
