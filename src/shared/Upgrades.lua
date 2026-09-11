@@ -30,6 +30,9 @@ Upgrades.BASE_BATTERY_MAH = 500
 Upgrades.defs = {
 	Speed = {
 		name = "Walk speed",
+		-- This is your TRUE speed -- it only applies ON THE FIELD (see
+		-- PlayerSpeed.server.lua). Off the field you're always at Roblox's
+		-- flat default (16), no matter this upgrade's level.
 		base = 4,        -- studs/second at level 0 (Roblox default is 16 -- this is a slow trudge)
 		perLevel = 1.5,
 		unit = " spd",

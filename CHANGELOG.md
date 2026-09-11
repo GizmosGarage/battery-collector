@@ -10,6 +10,56 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Two speeds: flat NORMAL everywhere, upgraded TRUE only on the field
+
+**Goal:** the Speed upgrade was affecting WalkSpeed everywhere, all the time
+-- including on the walk to the Data Center and Shop, which are no longer
+even part of the field. Split it into two speeds: a flat, constant NORMAL
+speed (Roblox's own default, 16 studs/sec) that applies everywhere and is
+NEVER touched by the Speed upgrade, and a TRUE speed -- exactly what the
+Speed upgrade always computed -- that only takes effect while standing on
+`Workspace.Field.Pad`. True speed at level 0 is unchanged (still 4, "a slow
+trudge").
+
+### [PlayerSpeed.server.lua](src/server/PlayerSpeed.server.lua) — rewritten around a zone check
+- Added `isOnField(position)`: a 2-D bounding-box test against the live
+  `Field.Pad` instance's `Size`/`Position` -- the exact same kind of check
+  BatterySpawner's `AREA_SIZE` assert does, just reading the Pad directly
+  instead of a hardcoded number, so if the Pad ever moves or resizes this
+  keeps working with no code change.
+- `applySpeed` now picks `trueSpeedForLevel(SpeedLevel)` when `isOnField(...)`
+  is true, else the flat `NORMAL_WALKSPEED = 16` -- and only WRITES
+  `humanoid.WalkSpeed` when that target actually differs from what was last
+  set (tracked in `appliedSpeed[player]`), so a stationary player on or off
+  the field isn't getting redundant writes every check.
+- Added a `task.spawn` loop that calls `applySpeed` for every player every
+  `CHECK_INTERVAL` (0.2s) -- this is what actually detects "walked onto/off
+  the field," since nothing else was pushing a per-frame position check
+  before.
+- `StarterPlayer.CharacterWalkSpeed` now starts characters at
+  `NORMAL_WALKSPEED` (they spawn on `Workspace.SpawnLocation`, off the
+  field) instead of the old level-0 TRUE speed.
+
+### [Upgrades.lua](src/shared/Upgrades.lua) — doc comment only
+- Noted on the `Speed` def that it's a TRUE-speed effect, on-field only --
+  the numbers (`base = 4`, `perLevel = 1.5`) didn't change.
+
+**Concept:** polling a cheap condition (a bounding-box test) on an interval
+instead of every frame, and writing to a replicated property
+(`Humanoid.WalkSpeed`, which every client watching this character receives)
+only when its value actually changes -- the same "don't do work, or send
+data, that wouldn't change anything" idea as `DataCenterSecondsLeft` only
+publishing when the reserve changes.
+
+**Tested:** Play mode, driving a player's `HumanoidRootPart` around via
+`execute_luau` -- confirmed 16 WalkSpeed at spawn (off-field), 4 the instant
+they're teleported onto the field (level-0 true speed), 8.5 on-field after
+setting `SpeedLevel` to 3 (`4 + 3*1.5`, matching `Upgrades.effect` exactly),
+and back to flat 16 immediately on teleporting off-field again at that same
+level -- the upgrade had zero effect there. No console errors.
+
+---
+
 ## 2026-09-11 — Spawn, Data Center, and Shop pads moved off the field
 
 **Goal:** the field platform added earlier today was built centered on top of
