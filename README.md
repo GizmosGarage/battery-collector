@@ -106,7 +106,10 @@ specific things live *only* in the place file, not this repo:
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter` (Pad + floating sign) and `Workspace.Shop` (Pad + sign)
+- `Workspace.DataCenter` (Pad + floating sign), `Workspace.Shop` (Pad + sign),
+  and `Workspace.Field` (Pad) — the raised platform batteries spawn on; see
+  `BatterySpawner.server.lua`'s `AREA_CENTER`/`AREA_SIZE`/`FIELD_TOP` for how
+  the code expects it to be sized and placed
 
 If the place file is ever lost, these have to be rebuilt by hand (the
 `Prompts/` and `Models/` folders document how the original battery look was

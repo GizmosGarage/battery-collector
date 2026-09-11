@@ -10,6 +10,51 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Batteries only spawn on a real field now (a raised platform)
+
+**Goal:** batteries were spawning over a 120x120 square of the bare grey
+baseplate, floating over whatever happened to be there. Give them an actual
+place to live -- a raised platform like the Data Center's and Shop's pads,
+just much bigger, sized to fit and space out all the batteries -- and make it
+physically impossible to spawn one off of it.
+
+### World geometry (built live in Studio, not tracked in this repo)
+- New `Workspace.Field` model: a `Pad` part, 150 x 1 x 150 studs, green
+  (`Color3.fromRGB(58, 125, 68)`) to read as "the field," centered at
+  (-5, 0.5, -21) so its top sits flush at Y = 1 -- same convention as
+  `DataCenter.Pad` and `Shop.Pad` (both 1 stud thick, resting on the
+  baseplate). `PrimaryPart` set to `Pad`, matching those two models.
+- 150x150 gives the existing 120x120 spawn square a 15-stud margin on every
+  side, so batteries never spawn at the very edge.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua)
+- Added `FIELD_TOP = 1` -- the world Y of the Field pad's top surface -- and
+  changed `randomCenterPosition` to hover batteries at
+  `FIELD_TOP + BASE_HOVER + height/2` instead of `BASE_HOVER + height/2`.
+  Before, `BASE_HOVER` was measured from Y = 0 (the bare baseplate); now it's
+  measured from the platform's own surface, so batteries sit just above the
+  field no matter where that field is in the world.
+- Added a startup `assert` comparing `AREA_SIZE` against
+  `Workspace.Field.Pad.Size` -- if anyone ever shrinks the platform or grows
+  the spawn square past it, the game fails loudly at boot instead of quietly
+  spawning batteries off the edge.
+- `BATTERY_COUNT` (15) and `AREA_SIZE` (120x120) unchanged -- the existing
+  spread was already generous (~960 sq. studs per battery); only the platform
+  underneath it changed.
+
+**Concept:** measuring a position **relative to a reference surface**
+(`FIELD_TOP + BASE_HOVER`) instead of an absolute world coordinate, so moving
+or resizing the platform later doesn't require touching the hover math. Also:
+an `assert` as a cheap, permanent guardrail against a future edit silently
+breaking an invariant (here, "batteries stay on the platform").
+
+**Tested:** Play mode in Studio, camera positioned above the field -- all 15
+batteries spawn spread across the green platform with margin on every side,
+the player's spawn point sits on it too, and the console printed no errors
+(the assert didn't trip).
+
+---
+
 ## 2026-09-11 — Power draw is real now: dumped mAh is a reserve the GPUs burn
 
 **Goal:** make yesterday's power-need readout actually load-bearing. Upgrading

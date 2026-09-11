@@ -28,11 +28,23 @@ local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 -- ============================ CONFIG ============================
 -- Change these numbers to retune the game. Everything below reads from here.
 local BATTERY_COUNT = 15                       -- how many batteries exist at once
-local AREA_CENTER   = Vector3.new(-5, 0, -21)  -- middle of the spawn field (near the spawn pad)
+local AREA_CENTER   = Vector3.new(-5, 0, -21)  -- middle of the spawn field -- must match Workspace.Field.Pad's X/Z
 local AREA_SIZE     = 120                      -- batteries spawn inside a 120 x 120 stud square
-local BASE_HOVER    = 1.8                      -- how far a battery's BOTTOM floats above the baseplate
+local FIELD_TOP     = 1                        -- world Y of Workspace.Field.Pad's TOP surface (batteries hover above THIS, not the baseplate)
+local BASE_HOVER    = 1.8                      -- how far a battery's BOTTOM floats above the field's surface
 local RESPAWN_DELAY = 3                        -- seconds between a battery being COLLECTED and a new one appearing
 local BATTERY_TAG   = "BatteryPickup"          -- CollectionService tag the client watches for
+
+-- Batteries may only exist on Workspace.Field.Pad (a big raised platform, like the
+-- Data Center and Shop pads but sized to fit BATTERY_COUNT with room to spare).
+-- AREA_SIZE must stay smaller than the Pad's own footprint so nothing spawns off
+-- the edge -- this assert catches that mistake immediately instead of letting
+-- batteries silently spawn floating over empty air.
+local fieldPad = workspace:WaitForChild("Field"):WaitForChild("Pad")
+assert(
+	AREA_SIZE <= fieldPad.Size.X and AREA_SIZE <= fieldPad.Size.Z,
+	"BatterySpawner: AREA_SIZE is bigger than Workspace.Field.Pad -- batteries would spawn off the platform"
+)
 
 -- The battery models to clone, in order from COMMONEST to RAREST. Each has its
 -- pivot at its own CENTRE. Every size counts as 1 SLOT when carried -- the sizes
@@ -91,11 +103,13 @@ local function pickTemplate()
 end
 
 -- Pick a random hover position inside the square, for a battery `height` tall.
+-- The Y is measured from FIELD_TOP (the platform's surface), not from Y = 0, so
+-- batteries hover just above the Field pad no matter where it sits in the world.
 local function randomCenterPosition(height)
 	local half = AREA_SIZE / 2
 	local x = AREA_CENTER.X + math.random(-half, half)
 	local z = AREA_CENTER.Z + math.random(-half, half)
-	return Vector3.new(x, BASE_HOVER + height / 2, z)
+	return Vector3.new(x, FIELD_TOP + BASE_HOVER + height / 2, z)
 end
 
 -- Create one battery and wire up what happens when it's collected or expires.
