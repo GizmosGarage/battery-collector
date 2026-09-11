@@ -10,6 +10,44 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Walk through batteries once you're full
+
+**Goal:** when your carry capacity is full, BatterySpawner already ignores the
+touch (you can't pick it up) -- but the battery's solid body still physically
+blocked movement, which just feels like a bug. Now it doesn't.
+
+### Added: `src/client/BatteryCollision.client.lua` (LocalScript)
+- Tracks every tagged battery the same way `BatterySpin`/`BatteryGlow` do (wait
+  for all 5 parts to replicate before touching anything).
+- Computes "am I full?" from `leaderstats.Batteries.Value >=
+  Upgrades.effect("Capacity", CapacityLevel)`, and sets `CanCollide` on the 4
+  solid body parts (not the already-non-colliding `Hitbox`) to match: full ->
+  `false` (walk through), not full -> `true` (normal).
+- Re-checks every tracked battery whenever `Batteries.Changed` fires (collect,
+  dump) or `CapacityLevel` changes (bought Capacity) -- both fire immediately,
+  no polling needed for the full/not-full state itself.
+- New batteries get the CURRENT full/not-full state applied the instant they're
+  tracked, so one that spawns in while you're already full doesn't start solid.
+
+**This only affects the local player.** `CanCollide` is set purely on this
+client's own copy of each battery; the local player's character owns its own
+movement physics, so it alone starts walking through. Another player whose
+capacity still has room keeps feeling the same battery as solid. (Collection
+itself was already server-authoritative and per-player via the `Hitbox`, so this
+doesn't change who can pick up what -- only how full-vs-not-full *feels*.)
+
+**Concepts introduced:** per-player physical behaviour without any server
+involvement, by exploiting the fact that a player's own movement is simulated
+on their own machine; deriving one boolean ("full") from two independently-
+changing sources (a leaderstat and an attribute) and refreshing on either.
+
+**Tested:** not full -> `lower_body.CanCollide = true` on live batteries.
+Server set `Batteries` to the Capacity cap (5) -> client's copy of every tracked
+battery flipped to `CanCollide = false` within one frame. Reduced back below
+cap -> flipped back to `true`. No console errors.
+
+---
+
 ## 2026-09-10 — Real tradeoffs: Speed & Capacity upgrades, carry cap, despawn timers
 
 **Goal:** progress had become "always more, never a choice." Three changes fix
