@@ -2,13 +2,26 @@
 	DataCenter  --  Server Script, lives in ServerScriptService
 
 	The dump-off loop. Walk onto Workspace.DataCenter.Pad carrying battery
-	capacity and it all gets fed into the "AI data center": your mAh drops to 0,
-	and the data center runs for a while, paying you Cash every second.
+	capacity and it all gets fed into the "AI data center" as a POWER RESERVE:
+	your mAh drops to 0, and that much (times your Efficiency upgrade) becomes
+	fuel in the tank.
 
-		run time added    = (mAh dumped / 1000) * secondsPer1000Mah   (Seconds upgrade)
-		cash while running = cashPerSecond every second                (Cash upgrade)
+	Every second the data center runs, it DRAWS power from that reserve --
+	Upgrades.powerNeeded(CashLevel) mAh -- and pays out Cash:
 
-	Dumping again while it's still running just adds more seconds to the timer.
+		reserve added  = mAh dumped * Efficiency upgrade's multiplier
+		power draw/sec = Upgrades.powerNeeded(CashLevel)   -- more GPUs, more draw
+		cash/sec       = Upgrades.effect("Cash", CashLevel)
+
+	Buying Cash ("adding a GPU") pays more but drains the reserve faster. Buying
+	Efficiency makes every battery you dump deliver more reserve. Those two
+	upgrades now directly pull against each other -- Cash is no longer a free
+	upgrade to stack.
+
+	If the reserve can't cover a full second's draw, the data center just idles
+	-- whatever's left stays banked for your next dump; nothing is destroyed.
+
+	Dumping again while it's still running just adds more reserve.
 	Each player has their own independent run; the Pad is only the trigger.
 
 	Note: the DataCenter model lives in the .rbxl place file, not in this repo.
@@ -20,28 +33,30 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 
 -- ============================ CONFIG ============================
-local PAYOUT_INTERVAL = 1      -- seconds between payouts (keep at 1 for whole-second math)
-local DUMP_DEBOUNCE   = 1      -- ignore repeat touches from the same player for this long
-local MAH_PER_RUNTIME = 1000   -- how much dumped mAh buys one "unit" of the Seconds upgrade's run time
--- The per-second cash and the run time per unit come per-player from the Upgrades
--- module, scaled by that player's purchased upgrade levels.
+local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 -- power draw is defined per second)
+local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for this long
+-- Cash/sec, power draw (mAh/sec), and dump efficiency all come per-player from
+-- the Upgrades module, scaled by that player's purchased upgrade levels.
 -- ==============================================================
 
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
 assert(dataCenter, "DataCenter: no 'DataCenter' model found in Workspace (it lives in the place file)")
 local pad = dataCenter:WaitForChild("Pad")
 
--- player -> seconds of run time left
+-- player -> mAh of power reserve currently banked
 local runs = {}
 -- player -> os.clock() of their last dump (debounce)
 local lastDump = {}
 
--- Tell THIS player's client how much run time they have left. The Pad is one
--- shared part, so its "ONLINE" glow is drawn per-client from this attribute
--- (see src/client/DataCenterDisplay.client.lua) -- if the server lit the Pad,
--- everyone would see it lit whenever anyone's run was active.
+-- Tell THIS player's client roughly how many seconds their reserve will last at
+-- their CURRENT power draw. The Pad is one shared part, so its "ONLINE" glow is
+-- drawn per-client from this attribute (see DataCenterDisplay.client.lua) -- if
+-- the server lit the Pad, everyone would see it lit whenever anyone's ran.
 local function publish(player)
-	player:SetAttribute("DataCenterSecondsLeft", runs[player] or 0)
+	local reserve = runs[player] or 0
+	local powerDraw = Upgrades.powerNeeded(player:GetAttribute("CashLevel") or 0)
+	local secondsLeft = (powerDraw > 0) and math.floor(reserve / powerDraw) or 0
+	player:SetAttribute("DataCenterSecondsLeft", secondsLeft)
 end
 
 local function getStat(player, name)
@@ -77,16 +92,16 @@ pad.Touched:Connect(function(hit)
 		carried.Value = 0
 	end
 
-	-- Run time per 1000 mAh for THIS player (their Seconds upgrade level).
-	local secondsPerUnit = Upgrades.effect("Seconds", player:GetAttribute("SecondsLevel") or 0)
-	local addedSeconds = math.floor((dumped / MAH_PER_RUNTIME) * secondsPerUnit)
+	-- Efficiency upgrade: how much usable reserve each dumped mAh actually delivers.
+	local efficiency = Upgrades.effect("Efficiency", player:GetAttribute("EfficiencyLevel") or 0)
+	local addedReserve = math.floor(dumped * efficiency)
 
-	runs[player] = (runs[player] or 0) + addedSeconds
+	runs[player] = (runs[player] or 0) + addedReserve
 	publish(player)
 
 	print(string.format(
-		"%s dumped %d mAh -> data center runs %d more seconds (now %d)",
-		player.Name, dumped, addedSeconds, runs[player]
+		"%s dumped %d mAh (x%.2f efficiency -> %d reserve) -- data center now holds %d mAh",
+		player.Name, dumped, efficiency, addedReserve, runs[player]
 	))
 end)
 
@@ -96,28 +111,25 @@ Players.PlayerRemoving:Connect(function(player)
 	lastDump[player] = nil
 end)
 
--- The payout loop: once a second, pay every active run and count it down.
+-- The payout loop: once a second, every player with any banked reserve tries to
+-- draw a second's worth of power. Enough reserve -> pay Cash, drain the reserve.
+-- Not enough -> idle this tick; the reserve stays banked, untouched, for later.
 task.spawn(function()
 	while true do
 		task.wait(PAYOUT_INTERVAL)
 
-		for player, secondsLeft in runs do
-			local cash = getStat(player, "Cash")
-			if cash then
-				-- Cash/second for THIS player (their Cash upgrade level).
-				local cashPerSecond = Upgrades.effect("Cash", player:GetAttribute("CashLevel") or 0)
-				cash.Value += cashPerSecond * PAYOUT_INTERVAL
+		for player, reserve in runs do
+			local powerDraw = Upgrades.powerNeeded(player:GetAttribute("CashLevel") or 0)
+
+			if reserve >= powerDraw then
+				local cash = getStat(player, "Cash")
+				if cash then
+					cash.Value += Upgrades.effect("Cash", player:GetAttribute("CashLevel") or 0)
+				end
+				runs[player] = reserve - powerDraw
 			end
 
-			local remaining = secondsLeft - PAYOUT_INTERVAL
-			if remaining > 0 then
-				runs[player] = remaining
-			else
-				runs[player] = nil
-				print(player.Name .. "'s data center powered down")
-			end
-
-			publish(player)   -- keep this player's client in sync each tick
+			publish(player)   -- keep this player's client in sync every tick
 		end
 	end
 end)

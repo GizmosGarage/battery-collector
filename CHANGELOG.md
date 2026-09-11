@@ -10,6 +10,61 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Power draw is real now: dumped mAh is a reserve the GPUs burn
+
+**Goal:** make yesterday's power-need readout actually load-bearing. Upgrading
+Cash should genuinely make the data center need more power to run, not just
+display a bigger number next to an unaffected timer.
+
+### The mechanic changed, not just the numbers
+- **Before:** dumping converted mAh into a precomputed seconds-timer
+  (`Seconds` upgrade), and Cash-per-second paid out on that timer regardless of
+  Cash level. Power need was a readout with nothing behind it.
+- **Now:** dumping adds to a real **power reserve** (mAh banked). Every second
+  the data center runs, it draws `Upgrades.powerNeeded(CashLevel)` mAh straight
+  out of that reserve -- pay Cash only if there's enough left to cover the
+  draw. Run out mid-second and it idles (not destroyed -- next dump tops the
+  reserve back up and it resumes).
+
+### `Upgrades.lua` — `Seconds` renamed `Efficiency`, redefined
+- Was "seconds of runtime per 1000 mAh" (base 2, +0.5/lvl) -- a number that fed
+  a timer unrelated to Cash. Now **"power conversion efficiency"**: a
+  multiplier on how much reserve a dump actually delivers (base 1.0x,
+  +0.2x/lvl). `reserve added = mAh dumped * Efficiency effect`.
+- `Upgrades.order` updated to match. Cost curve (50, x1.5/level) unchanged.
+- `powerNeeded`'s doc comment updated -- it's enforced now, not just displayed.
+
+### `DataCenter.server.lua` — rewritten around the reserve
+- `runs[player]` is now **mAh banked**, not seconds left.
+- Dump: `addedReserve = floor(dumped * Upgrades.effect("Efficiency", level))`.
+- Payout tick: `powerDraw = Upgrades.powerNeeded(CashLevel)`; if
+  `reserve >= powerDraw`, pay `Upgrades.effect("Cash", CashLevel)` and drain the
+  reserve by `powerDraw`; otherwise skip this tick and leave the reserve
+  untouched (nothing wasted, no player left short over 1 mAh).
+- `DataCenterSecondsLeft` (what the sign shows) is now computed fresh each
+  publish as `floor(reserve / currentPowerDraw)` -- an honest estimate, always
+  consistent with the live numbers.
+- No client changes needed: `DataCenterDisplay.client.lua` and `ShopUI.client.lua`
+  already read generically (`Upgrades.order`, `id.."Level"`), so the rename and
+  the new mechanic required zero edits on the client side.
+
+**The tradeoff, concretely (tested below):** at Cash level 0, 500 mAh = 1 second,
+exactly what was promised. Buy Cash to level 2 and the SAME 2000 mAh dump now
+lasts only 2 seconds instead of 4 -- but pays 9 Cash/sec instead of 5. Buy
+Efficiency to counter it, and the same dump stretches back out. Cash and
+Efficiency now pull directly against each other, the way Speed/Capacity already
+pull against Seconds/Cash for the shared pool.
+
+**Tested (Play mode):** 500 mAh @ level 0 -> exactly 1 tick, 5 Cash, reserve hits
+0. 2000 mAh @ Cash lvl 0 -> 4 ticks, 20 Cash. Bought Cash to lvl 2 (powerDraw
+500->900): same 2000 mAh -> 2 ticks, 18 Cash (shorter, richer). Bought
+Efficiency to lvl 2 (1.0x->1.4x): same 2000 mAh -> 2800 reserve -> 3 ticks, 27
+Cash (stretched back out). Confirmed leftover reserve (500, insufficient for a
+tick) survives idling untouched and combines correctly with a later dump
+(500+1400=1900 -> 2 more ticks). No console errors throughout.
+
+---
+
 ## 2026-09-11 — Power need anchored to a battery's worth (500, not 10)
 
 **The bug report:** the sign read "Needs 10 mAh/s to run" at level 0; expected

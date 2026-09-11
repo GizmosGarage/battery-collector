@@ -9,14 +9,16 @@
 	Levels are 0-based. Level 0 = the base value, no purchases made.
 
 	Four upgrades competing for the same Cash is the whole point: Speed and
-	Capacity make you better at COLLECTING; Seconds and Cash make you better at
-	CASHING OUT. Every purchase is Cash you didn't spend on the other three.
+	Capacity make you better at COLLECTING; Efficiency and Cash make you better
+	at CASHING OUT -- and now pull directly against each other: Cash pays more
+	but makes the data center draw more power per second, Efficiency stretches
+	how much usable power each battery you dump actually delivers.
 --]]
 
 local Upgrades = {}
 
 -- Display / iteration order for the shop UI.
-Upgrades.order = { "Speed", "Capacity", "Seconds", "Cash" }
+Upgrades.order = { "Speed", "Capacity", "Efficiency", "Cash" }
 
 -- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales every
 -- other size up from this by the same RARITY_FALLOFF it uses for spawn odds
@@ -45,11 +47,11 @@ Upgrades.defs = {
 		growth = 1.5,
 	},
 
-	Seconds = {
-		name = "Run time per 1000 mAh",
-		base = 2,        -- seconds of data-center runtime each 1000 mAh dumped buys, at level 0
-		perLevel = 0.5,
-		unit = "s",
+	Efficiency = {
+		name = "Power conversion efficiency",
+		base = 1,        -- multiplier on the reserve a dumped battery delivers, at level 0 (no bonus)
+		perLevel = 0.2,  -- +20% more usable reserve per level
+		unit = "x",
 		decimal = true,
 		baseCost = 50,
 		growth = 1.5,
@@ -91,8 +93,9 @@ end
 -- upgrade level -- each level is another GPU unit added, and more GPUs need
 -- more power. Anchored so the BASE (level 0) need is exactly one AAA battery's
 -- worth of power per second -- "the data center burns a battery a second just to
--- stay on." Currently a READOUT (shown on the DataCenter sign), not yet
--- enforced against a power reserve.
+-- stay on." DataCenter.server.lua actually enforces this against a real power
+-- reserve (see there); this is also shown on the DataCenter sign so the number
+-- is visible before it bites.
 local CASH_POWER_RATIO = Upgrades.BASE_BATTERY_MAH / Upgrades.defs.Cash.base   -- mAh/sec of draw per 1 Cash/sec of payout
 
 function Upgrades.powerNeeded(cashLevel)
