@@ -10,6 +10,35 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Spawn, Data Center, and Shop pads moved off the field
+
+**Goal:** the field platform added earlier today was built centered on top of
+where the Spawn pad, `DataCenter.Pad`, and `Shop.Pad` already sat, so all
+three were physically overlapping the green field. Move them clear of it so
+the field reads as its own space and nothing sits on top of anything else.
+
+### World geometry only (built live in Studio, not tracked in this repo)
+- `Workspace.DataCenter` and `Workspace.Shop` — every part in each model
+  (Pad + floating Sign) shifted by the same `+78` on Z, so the Sign keeps its
+  exact offset above its Pad. New pad centers: DataCenter (-19, 0.5, 75),
+  Shop (6, 0.5, 75) -- both were at Z = -3.
+- `Workspace.SpawnLocation` moved to (-38, 0.25, 75), clear of DataCenter's
+  new footprint too.
+- All three now sit in a row just south of `Workspace.Field.Pad` (whose
+  footprint is X -80..70, Z -96..54), each with a 13+ stud gap to the field's
+  edge -- verified in Studio by comparing each pad's world bounding box
+  against the field's, not eyeballed.
+
+No `src/` changes: nothing in the code hardcodes these instances' positions
+(`DataCenter.server.lua`, `ShopUI.client.lua`, etc. all just do
+`workspace:WaitForChild("DataCenter")` and work off whatever `.Pad` they
+find), so relocating them needed zero script edits.
+
+**Tested:** Play mode -- player spawns cleanly on the relocated Spawn pad,
+batteries still fill the field, no console errors.
+
+---
+
 ## 2026-09-11 — Batteries only spawn on a real field now (a raised platform)
 
 **Goal:** batteries were spawning over a 120x120 square of the bare grey
