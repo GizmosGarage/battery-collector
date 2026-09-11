@@ -13,10 +13,6 @@ on four upgrades that compete for the same money (better at collecting, or
 better at cashing out — buying more Cash output also makes the data center
 hungrier for power, so it's a real tradeoff, not just "buy everything").
 
-The full, dated story of every change — what, why, and what it taught — is in
-[CHANGELOG.md](CHANGELOG.md). Read that before making changes; it explains the
-reasoning behind the current numbers far better than the code alone can.
-
 ## Working agreement (read this first, human or AI)
 
 - **Explain everything simply.** Ethan is building software literacy through
@@ -27,9 +23,18 @@ reasoning behind the current numbers far better than the code alone can.
   to GitHub automatically** once it's built and tested — no need to ask first.
   `github.com/GizmosGarage/battery-collector`, branch `main`. No attribution
   lines in commit messages.
+- **[CHANGELOG.md](CHANGELOG.md) is Ethan's personal devlog, not onboarding
+  material.** After every change, append a dated entry to it (what changed,
+  why, which files, what concept it taught, how it was tested) — same as
+  always. But **an AI session should never *read* CHANGELOG.md to get
+  oriented** — it's grown to hundreds of lines and would burn a large chunk of
+  context before any work gets done, for a payoff the code already gives you
+  for free. To understand what the game currently does, **read the `src/`
+  files directly** (they're the actual, current behavior — shorter and more
+  reliable than a historical narrative) plus this README. Write to the
+  CHANGELOG; don't read from it.
 - **The `Scripts/` folder of old numbered snapshots is retired** (removed
-  2026-09-10). `git log` and `CHANGELOG.md` are the history now — don't
-  recreate that pattern.
+  2026-09-10). `git log` is the code history now — don't recreate that pattern.
 - **World geometry (the battery models, the Data Center, the Shop platform)
   lives only in the `.rbxl` place file, not in this repo** — see "What isn't
   tracked" below. Only the code is version-controlled.
@@ -41,7 +46,7 @@ Battery Collector/
 ├── default.project.json   Rojo's map: which folder goes to which Roblox service
 ├── .gitignore              files Git should ignore (mainly the .rbxl place file)
 ├── README.md               this file
-├── CHANGELOG.md            dated, plain-language history of every change — read this
+├── CHANGELOG.md            Ethan's devlog — APPEND after every change, don't read it to get oriented
 ├── src/                    the live source code — edit these files
 │   ├── server/             → ServerScriptService
 │   │   ├── PlayerSetup.server.lua      gives each player their leaderstats (Batteries, mAh, Cash)
