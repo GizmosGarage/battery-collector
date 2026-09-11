@@ -10,6 +10,75 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-10 — Real tradeoffs: Speed & Capacity upgrades, carry cap, despawn timers
+
+**Goal:** progress had become "always more, never a choice." Three changes fix
+that: walk speed is now a purchased upgrade (competing with the other three for
+the same Cash), carrying is capped by a SLOT count (not mAh, so hoarding rare
+batteries is a real strategy), and uncollected batteries expire -- the rarest
+fastest -- so grabbing one is a race, not a given.
+
+### `Upgrades.lua` — two new upgrades, four total, one Cash pool
+- Added `Speed` (base 4, +1.5/level) and `Capacity` (base 5, +1/level).
+- `Upgrades.order = { "Speed", "Capacity", "Seconds", "Cash" }` — the shop's
+  display order, and now the single place a new upgrade needs to be added.
+- `formatEffect` generalized from a hardcoded "seconds get a decimal" check to a
+  `decimal` flag per def (Speed also wants one decimal place).
+
+### `PlayerSpeed.server.lua` — speed no longer comes from carrying
+- Completely decoupled from `leaderstats.mAh`. `WalkSpeed = Upgrades.effect(
+  "Speed", SpeedLevel)`, capped at 60, reacting to the `SpeedLevel` attribute
+  instead of a leaderstat `.Changed`. Simpler script -- no leaderstats dependency
+  left at all.
+
+### `PlayerSetup.server.lua` — a new leaderstat: `Batteries`
+- A count of how many battery SLOTS you're currently carrying (0 up to your
+  Capacity upgrade), separate from `mAh`. Resets on dump.
+
+### `BatterySpawner.server.lua` — capacity gate + expiry timers
+- `require(Upgrades)`. On touch: reads the player's `Batteries` count and their
+  `Capacity` effect; if `carried.Value >= maxCarry`, the touch is a no-op -- the
+  battery stays put, uncollected, full is full. Otherwise both `Batteries` and
+  `mAh` go up.
+- New `BASE_LIFETIME` (60s, for AAA) / `LIFETIME_FALLOFF` (2): each rarer size
+  lives `LIFETIME_FALLOFF` times less long (AAA 60s / AA 30s / C 15s / D 7.5s).
+  A `task.delay(pick.lifetime, ...)` expires the battery if nobody grabs it.
+- Refactored the collected-guard into one `removeBattery(delay)` helper, called
+  by both the `.Touched` handler (RESPAWN_DELAY) and the expiry timer (0 delay)
+  -- both set the same `collected` flag first, so a battery collected right as
+  its timer fires (or vice versa) is only ever removed/respawned once.
+
+### `Shop.server.lua` — generalized instead of hardcoded
+- `levels[player]` and the id-validity check now iterate `Upgrades.defs`
+  directly (`for id in Upgrades.defs`) instead of naming "Seconds"/"Cash" by
+  hand -- adding a 5th upgrade later won't require touching this file.
+
+### `DataCenter.server.lua` — dumping now empties the whole inventory
+- Zeroes `Batteries` alongside `mAh` when you dump, freeing your carry slots.
+
+### `ShopUI.client.lua` — 4 rows, built the same way as 2
+- Row-building loops `Upgrades.order` instead of two hardcoded `makeRow` calls;
+  panel resized (400x430) to fit.
+
+**Concepts introduced:** an exponential DEcay curve (`base / falloff^n`) as the
+mirror image of the growth curve we've used for cost/value; a shared "collected"
+flag guarding TWO independent removal paths (touch vs. timer) against a race;
+generalizing hardcoded per-upgrade code into a loop over a data table (`Upgrades
+.defs`/`.order`) so the data model is the only thing that has to grow.
+
+**Tested (Play mode):** all 4 upgrade attributes present at level 0; bought Speed
+(WalkSpeed 4 -> 5.5) and Capacity x2 (cap 5 -> 7) through the real RemoteEvent
+flow, costs matched the exponential curve. Walked a player onto 9 real batteries
+in sequence: collected exactly 7 (Batteries 0->7, mAh climbing), the 8th and 9th
+were left in place, uncollected, cap enforced. Dumped: Batteries and mAh both
+reset to 0. Shop panel showed all 4 rows in order with live levels/costs.
+Despawn: with lifetimes temporarily shortened to 8/4/2/1s, watched the field for
+12s -- total stayed at exactly 15 throughout continuous churn (no duplicate or
+lost spawns), confirming the shared-guard fix works; reverted to the real 60/2
+values afterward. No console errors at any point.
+
+---
+
 ## 2026-09-10 — Rarity glow so battery value reads at a distance
 
 **Goal:** the four sizes look similar from afar. Add a glow that escalates with

@@ -2,8 +2,9 @@
 	ShopUI  --  LocalScript, StarterPlayer > StarterPlayerScripts
 
 	The upgrade shop's screen. Walk onto Workspace.Shop.Pad and this panel
-	appears; walk off and it hides. Two rows: one per upgrade. Each shows the
-	current effect, the next-level effect, and the Cash cost, with a Buy button.
+	appears; walk off and it hides. One row per upgrade in Upgrades.order. Each
+	shows the current effect, the next-level effect, and the Cash cost, with a
+	Buy button.
 
 	Buying just fires the BuyUpgrade RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server bumps our level (an attribute), the
@@ -47,7 +48,7 @@ local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.fromOffset(380, 240)
+panel.Size = UDim2.fromOffset(400, 430)   -- tall enough for the title, Cash line, and 4 rows
 panel.BackgroundColor3 = COLOR_BG
 panel.BorderSizePixel = 0
 panel.Parent = screen
@@ -126,8 +127,9 @@ local function makeRow(id, order)
 	rows[id] = { info = info, buy = buy }
 end
 
-makeRow("Seconds", 3)
-makeRow("Cash", 4)
+for i, id in Upgrades.order do
+	makeRow(id, 2 + i)   -- title=1, cashLine=2, so rows start at LayoutOrder 3
+end
 
 -- ---------- keep the numbers current ----------
 local function getCashValue()
@@ -156,9 +158,10 @@ local function refresh()
 	end
 end
 
--- Refresh when our levels change (server bumped them) or our Cash changes.
-LocalPlayer:GetAttributeChangedSignal("SecondsLevel"):Connect(refresh)
-LocalPlayer:GetAttributeChangedSignal("CashLevel"):Connect(refresh)
+-- Refresh when any of our levels change (server bumped one) or our Cash changes.
+for _, id in Upgrades.order do
+	LocalPlayer:GetAttributeChangedSignal(id .. "Level"):Connect(refresh)
+end
 task.spawn(function()
 	local ls = LocalPlayer:WaitForChild("leaderstats")
 	ls:WaitForChild("Cash").Changed:Connect(refresh)

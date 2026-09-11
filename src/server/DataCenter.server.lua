@@ -70,6 +70,13 @@ pad.Touched:Connect(function(hit)
 	mah.Value = 0
 	lastDump[player] = now
 
+	-- Dumping empties your whole inventory, not just its mAh -- free up your
+	-- carried-battery slots too, so you can go collect again.
+	local carried = getStat(player, "Batteries")
+	if carried then
+		carried.Value = 0
+	end
+
 	-- Run time per 1000 mAh for THIS player (their Seconds upgrade level).
 	local secondsPerUnit = Upgrades.effect("Seconds", player:GetAttribute("SecondsLevel") or 0)
 	local addedSeconds = math.floor((dumped / MAH_PER_RUNTIME) * secondsPerUnit)

@@ -4,19 +4,26 @@
 	The SERVER half of the batteries:
 	  1. clones one of the battery models from ServerStorage (random size)
 	  2. places each clone UPRIGHT at a random point in a square area (it hovers)
-	  3. tags it so the client's BatterySpin LocalScript will lean + spin it
-	  4. on a player touching a battery's Hitbox, adds that battery's mAh to their score
-	  5. a few seconds after a battery is collected, spawns a fresh one elsewhere
+	  3. tags it so the client's BatterySpin/BatteryGlow scripts will animate it
+	  4. on a player touching a battery's Hitbox -- if they have room (Capacity
+	     upgrade) -- adds that battery's mAh to their score and a slot to their count
+	  5. if nobody collects it in time, or once it's collected, it's replaced
 
-	The lean and spin are PURELY VISUAL and now live in the client LocalScript
-	(StarterPlayer > StarterPlayerScripts > BatterySpin), so no movement data is
-	sent over the network. The server's battery -- and its Hitbox -- stays upright
-	and still, which is what collection is measured against.
+	Rarer batteries are worth more mAh AND vanish faster if left uncollected --
+	see BASE_LIFETIME / LIFETIME_FALLOFF below -- so they reward rushing for them.
+
+	The lean and spin are PURELY VISUAL and live in client LocalScripts
+	(StarterPlayer > StarterPlayerScripts), so no movement data is sent over the
+	network. The server's battery -- and its Hitbox -- stays upright and still,
+	which is what collection is measured against.
 --]]
 
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 
 -- ============================ CONFIG ============================
 -- Change these numbers to retune the game. Everything below reads from here.
@@ -24,12 +31,12 @@ local BATTERY_COUNT = 15                       -- how many batteries exist at on
 local AREA_CENTER   = Vector3.new(-5, 0, -21)  -- middle of the spawn field (near the spawn pad)
 local AREA_SIZE     = 120                      -- batteries spawn inside a 120 x 120 stud square
 local BASE_HOVER    = 1.8                      -- how far a battery's BOTTOM floats above the baseplate
-local RESPAWN_DELAY = 3                        -- seconds between a battery being collected and a new one appearing
+local RESPAWN_DELAY = 3                        -- seconds between a battery being COLLECTED and a new one appearing
 local BATTERY_TAG   = "BatteryPickup"          -- CollectionService tag the client watches for
 
 -- The battery models to clone, in order from COMMONEST to RAREST. Each has its
--- pivot at its own CENTRE. Every size counts as 1 when collected -- the sizes are
--- purely visual variety.
+-- pivot at its own CENTRE. Every size counts as 1 SLOT when carried -- the sizes
+-- differ in mAh and lifetime, not in how much room they take up.
 local BATTERY_TEMPLATES = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }
 
 -- Each size in the list spawns this many times less often than the one before it,
@@ -41,14 +48,19 @@ local RARITY_FALLOFF = 3
 -- as much power as it is rare: AAA = BASE_MAH, and each rarer size is
 -- RARITY_FALLOFF times that. At BASE_MAH 500: AAA 500 / AA 1500 / C 4500 / D 13500.
 local BASE_MAH = 500
+
+-- How long an uncollected battery sticks around before it vanishes and
+-- reappears elsewhere. Rarer sizes live this many times LESS long, so a D
+-- battery is a race against the clock, not a guaranteed pickup.
+local BASE_LIFETIME    = 60   -- seconds, for AAA (the commonest / longest-lived)
+local LIFETIME_FALLOFF = 2    -- AAA 60s / AA 30s / C 15s / D 7.5s
 -- ==============================================================
 
 -- Look each template up once. Record its height (to float sizes with their
 -- bottoms lined up), its spawn weight (falloff ^ steps-from-the-rarest), its mAh
--- value (falloff ^ steps-from-the-commonest), and its rarity rank (1 = commonest,
--- matching BATTERY_TEMPLATES' order) -- the client's BatteryGlow script uses the
--- rank to pick how flashy a battery's glow should be.
-local templates = {}   -- { { model, height, weight, mah, rarity }, ... }
+-- value (falloff ^ steps-from-the-commonest), its rarity rank (1 = commonest,
+-- for the client's BatteryGlow to pick a glow tier), and its lifetime.
+local templates = {}   -- { { model, height, weight, mah, rarity, lifetime }, ... }
 local totalWeight = 0
 for i, name in BATTERY_TEMPLATES do
 	local model = ServerStorage:WaitForChild(name, 10)
@@ -62,6 +74,7 @@ for i, name in BATTERY_TEMPLATES do
 		weight = weight,
 		mah = math.floor(BASE_MAH * RARITY_FALLOFF ^ (i - 1)),
 		rarity = i,
+		lifetime = BASE_LIFETIME / LIFETIME_FALLOFF ^ (i - 1),
 	})
 end
 
@@ -85,7 +98,7 @@ local function randomCenterPosition(height)
 	return Vector3.new(x, BASE_HOVER + height / 2, z)
 end
 
--- Create one battery and wire up what happens when it's collected.
+-- Create one battery and wire up what happens when it's collected or expires.
 local function spawnBattery()
 	local pick = pickTemplate()
 	local battery = pick.model:Clone()
@@ -100,7 +113,19 @@ local function spawnBattery()
 
 	-- A clone made on the server is fully built right away, so .Hitbox is safe here.
 	local hitbox = battery.Hitbox
-	local collected = false                -- guard: .Touched fires many times per footstep
+	local collected = false   -- guard: both .Touched (many times per footstep) and
+	                          -- the expiry timer can try to remove this battery
+
+	-- Removes this battery (only once, however it happens) and queues its
+	-- replacement `delay` seconds later.
+	local function removeBattery(delay)
+		if collected then
+			return
+		end
+		collected = true
+		battery:Destroy()
+		task.delay(delay, spawnBattery)
+	end
 
 	hitbox.Touched:Connect(function(hit)
 		if collected then
@@ -112,19 +137,29 @@ local function spawnBattery()
 			return
 		end
 
-		collected = true
-
-		-- Add this battery's capacity to the player's carried mAh.
 		local leaderstats = player:FindFirstChild("leaderstats")
+		local carried = leaderstats and leaderstats:FindFirstChild("Batteries")
 		local mah = leaderstats and leaderstats:FindFirstChild("mAh")
-		if mah then
-			mah.Value += pick.mah
+		if not carried or not mah then
+			return
 		end
 
-		battery:Destroy()
+		-- Respect the player's Capacity upgrade -- full is full, no exceptions.
+		local maxCarry = Upgrades.effect("Capacity", player:GetAttribute("CapacityLevel") or 0)
+		if carried.Value >= maxCarry then
+			return   -- can't carry any more; go dump first
+		end
 
-		-- Queue a replacement to appear later, without pausing this script.
-		task.delay(RESPAWN_DELAY, spawnBattery)
+		carried.Value += 1
+		mah.Value += pick.mah
+
+		removeBattery(RESPAWN_DELAY)
+	end)
+
+	-- If nobody collects it before its lifetime is up, it vanishes and a fresh
+	-- one appears elsewhere -- no extra delay, it already had its turn.
+	task.delay(pick.lifetime, function()
+		removeBattery(0)
 	end)
 end
 

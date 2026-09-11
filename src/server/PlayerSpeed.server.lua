@@ -1,31 +1,32 @@
 --[[
 	PlayerSpeed  --  Server Script, lives in ServerScriptService
 
-	The player starts slow and speeds up the more battery capacity they carry.
-	(Theme: the more power you've hoarded, the more you can do.)
+	Walk speed is now purely a SHOP UPGRADE (see Shop.server.lua / Upgrades.lua)
+	-- it no longer depends on how much you're carrying. That's the tradeoff:
+	Cash spent on Speed is Cash you didn't spend on Capacity, Seconds, or Cash/sec.
 
-		WalkSpeed = BASE_WALKSPEED + (carried mAh / 1000) * SPEED_PER_1000_MAH
-		           capped at MAX_WALKSPEED
+		WalkSpeed = Upgrades.effect("Speed", SpeedLevel), capped at MAX_WALKSPEED
 
-	Driven off leaderstats.mAh, which the server owns, so speed always matches
-	the real score. Dumping at the data center zeroes mAh, dropping speed back.
+	Driven off the "SpeedLevel" attribute Shop.server.lua publishes, so speed
+	always matches your purchased level.
 --]]
 
 local Players = game:GetService("Players")
 local StarterPlayer = game:GetService("StarterPlayer")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 
 -- ============================ CONFIG ============================
-local BASE_WALKSPEED     = 4     -- Roblox default is 16; this is a slow trudge
-local SPEED_PER_1000_MAH = 1.5   -- studs/second added for every 1000 mAh carried
-local MAX_WALKSPEED      = 60    -- upper limit, so it stays controllable
+local MAX_WALKSPEED = 60   -- upper limit, so it stays controllable
 -- ==============================================================
 
--- Make new characters spawn already slow, instead of flashing normal speed for
--- a frame before this script catches them.
-StarterPlayer.CharacterWalkSpeed = BASE_WALKSPEED
+-- Make new characters spawn at the level-0 speed, instead of flashing normal
+-- speed for a frame before this script catches them.
+StarterPlayer.CharacterWalkSpeed = Upgrades.effect("Speed", 0)
 
-local function speedForMah(mah)
-	return math.min(BASE_WALKSPEED + (mah / 1000) * SPEED_PER_1000_MAH, MAX_WALKSPEED)
+local function speedForLevel(level)
+	return math.min(Upgrades.effect("Speed", level), MAX_WALKSPEED)
 end
 
 -- Push the right WalkSpeed onto a player's current character, if they have one.
@@ -39,11 +40,7 @@ local function applySpeed(player)
 		return
 	end
 
-	local mahValue = player:FindFirstChild("leaderstats")
-		and player.leaderstats:FindFirstChild("mAh")
-	local mah = (mahValue and mahValue.Value) or 0
-
-	humanoid.WalkSpeed = speedForMah(mah)
+	humanoid.WalkSpeed = speedForLevel(player:GetAttribute("SpeedLevel") or 0)
 end
 
 local function onPlayerAdded(player)
@@ -53,9 +50,8 @@ local function onPlayerAdded(player)
 		applySpeed(player)
 	end)
 
-	-- Wait for PlayerSetup to have created the counter, then react to every change.
-	local mahValue = player:WaitForChild("leaderstats"):WaitForChild("mAh")
-	mahValue.Changed:Connect(function()
+	-- React the instant Shop.server.lua bumps our Speed level.
+	player:GetAttributeChangedSignal("SpeedLevel"):Connect(function()
 		applySpeed(player)
 	end)
 

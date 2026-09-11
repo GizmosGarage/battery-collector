@@ -1,15 +1,18 @@
 --[[
 	Shop  --  Server Script, lives in ServerScriptService
 
-	Owns each player's two upgrade LEVELS and handles purchases.
+	Owns each player's upgrade LEVELS (one per id in Upgrades.defs) and handles
+	purchases.
 
 	The client shows the shop UI and clicks "Buy"; that fires the BuyUpgrade
 	RemoteEvent to here. The SERVER decides whether the purchase is allowed --
 	never the client. We check the id is real, check the player can afford the
 	cost (from the shared Upgrades module), take the Cash, and bump the level.
 
-	Levels are published as attributes on the Player ("SecondsLevel", "CashLevel")
-	so DataCenter and the client UI can read them.
+	Levels are published as attributes on the Player ("SpeedLevel", "CapacityLevel",
+	"SecondsLevel", "CashLevel") so DataCenter, PlayerSpeed, BatterySpawner, and the
+	client UI can all read them. Reading Upgrades.defs here (instead of hardcoding
+	the upgrade names) means adding a new upgrade only ever touches Upgrades.lua.
 --]]
 
 local Players = game:GetService("Players")
@@ -22,7 +25,7 @@ local buyEvent = Instance.new("RemoteEvent")
 buyEvent.Name = "BuyUpgrade"
 buyEvent.Parent = ReplicatedStorage
 
--- player -> { Seconds = <level>, Cash = <level> }
+-- player -> { [upgradeId] = level, ... } -- one entry per id in Upgrades.defs
 local levels = {}
 
 local function publish(player)
@@ -30,12 +33,17 @@ local function publish(player)
 	if not lv then
 		return
 	end
-	player:SetAttribute("SecondsLevel", lv.Seconds)
-	player:SetAttribute("CashLevel", lv.Cash)
+	for id, level in lv do
+		player:SetAttribute(id .. "Level", level)
+	end
 end
 
 local function setupPlayer(player)
-	levels[player] = { Seconds = 0, Cash = 0 }
+	local lv = {}
+	for id in Upgrades.defs do
+		lv[id] = 0
+	end
+	levels[player] = lv
 	publish(player)
 end
 
@@ -54,7 +62,7 @@ end
 
 -- A purchase request from a client. `id` is whatever the client sent -- distrust it.
 buyEvent.OnServerEvent:Connect(function(player, id)
-	if id ~= "Seconds" and id ~= "Cash" then
+	if not Upgrades.defs[id] then
 		return   -- not a real upgrade id
 	end
 
