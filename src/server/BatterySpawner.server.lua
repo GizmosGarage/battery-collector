@@ -17,10 +17,13 @@
 
 	Each field's `count` (Fields.lua) is now a CAP, not a fixed number it's
 	always at. How many batteries a field actually holds drifts randomly
-	between 1 and that cap: every SPAWN_CHECK_INTERVAL seconds, a field
-	that's under its cap rolls SPAWN_CHANCE odds of spawning one more. A
-	field never OVERFLOWS its cap, but it doesn't snap straight back to full
-	the instant something's collected either -- see startFieldLoop below.
+	between HALF that cap (rounded up) and the cap itself: every
+	SPAWN_CHECK_INTERVAL seconds, a field under its cap but at/above its
+	floor rolls SPAWN_CHANCE odds of spawning one more; a field that drops
+	BELOW its floor refills immediately, no roll needed. A field never
+	overflows its cap, and never sits below half of it, but it doesn't snap
+	straight back to full the instant something's collected either -- see
+	startFieldLoop and MIN_POPULATION_RATIO below.
 
 	For each field, this script:
 	  1. clones one of ITS allowed battery models from ServerStorage
@@ -64,7 +67,14 @@ local BATTERY_TAG = "BatteryPickup"   -- CollectionService tag the client watche
 -- slot takes SPAWN_CHECK_INTERVAL / SPAWN_CHANCE seconds to refill, but
 -- exactly when varies every time.
 local SPAWN_CHECK_INTERVAL = 2     -- seconds between refill rolls
-local SPAWN_CHANCE         = 0.5   -- odds, per roll, of actually spawning (if under cap)
+local SPAWN_CHANCE         = 0.5   -- odds, per roll, of actually spawning (if under cap, at/above floor)
+
+-- A field's population never drops below this fraction of its cap (rounded
+-- UP, so it's never below half even when the cap is odd -- 15 * 0.5 = 7.5,
+-- which becomes a floor of 8). Falling below the floor refills IMMEDIATELY
+-- (see removeBattery) instead of waiting on a SPAWN_CHANCE roll -- only the
+-- climb from the floor back up to the cap is left to chance.
+local MIN_POPULATION_RATIO = 0.5
 
 -- Batteries spawn inside a square INSET from each field's own Pad, so
 -- nothing ever spawns at (or past) the edge. 0.8 = the spawn square is 80%
@@ -153,8 +163,9 @@ local function buildField(def)
 		areaSize = areaSize,
 		templates = allowed,
 		totalWeight = totalWeight,
-		count = count,       -- the CAP -- this field never holds more than this many at once
-		liveCount = 0,        -- how many of this field's batteries exist RIGHT NOW
+		count = count,                                        -- the CAP -- this field never holds more than this many at once
+		minCount = math.ceil(count * MIN_POPULATION_RATIO),   -- the FLOOR -- this field never holds fewer than this many
+		liveCount = 0,                                         -- how many of this field's batteries exist RIGHT NOW
 	}
 end
 
@@ -210,7 +221,9 @@ local function spawnBattery(field)
 	                          -- the expiry timer can try to remove this battery
 
 	-- Removes this battery (only once, however it happens) and frees up its
-	-- slot -- the field's own loop decides when/if that slot gets refilled.
+	-- slot. If that drops the field BELOW its floor, refill right here,
+	-- immediately -- no waiting on startFieldLoop's next check or its
+	-- SPAWN_CHANCE roll, so the floor is never actually crossed.
 	local function removeBattery()
 		if collected then
 			return
@@ -218,6 +231,9 @@ local function spawnBattery(field)
 		collected = true
 		battery:Destroy()
 		field.liveCount -= 1
+		if field.liveCount < field.minCount then
+			spawnBattery(field)
+		end
 	end
 
 	hitbox.Touched:Connect(function(hit)
@@ -253,11 +269,14 @@ local function spawnBattery(field)
 	task.delay(pick.lifetime, removeBattery)
 end
 
--- Keep `field` topped up ONLY probabilistically: every SPAWN_CHECK_INTERVAL
--- seconds, if it's under its cap, roll SPAWN_CHANCE odds of adding one more.
--- This is the loop that makes `field.count` a ceiling instead of a target
--- that's always immediately re-hit -- most checks either find the field
--- already full (nothing to do) or fail the roll (nothing happens this time).
+-- Keep `field` topped up ONLY probabilistically, between its floor and its
+-- cap: every SPAWN_CHECK_INTERVAL seconds, if it's under its cap, roll
+-- SPAWN_CHANCE odds of adding one more. This is the loop that makes
+-- `field.count` a ceiling instead of a target that's always immediately
+-- re-hit -- most checks either find the field already full (nothing to do)
+-- or fail the roll (nothing happens this time). Dropping BELOW the floor is
+-- handled separately, immediately, in removeBattery -- this loop never has
+-- to catch that case.
 local function startFieldLoop(field)
 	task.spawn(function()
 		while true do
@@ -269,11 +288,11 @@ local function startFieldLoop(field)
 	end)
 end
 
--- Give each field a random HEAD START -- somewhere between 1 and its cap,
--- inclusive -- instead of always snapping straight to the max on server
--- boot, then hand it off to its own loop to grow or drain from there.
+-- Give each field a random HEAD START -- somewhere between its floor and
+-- its cap, inclusive -- instead of always snapping straight to the max on
+-- server boot, then hand it off to its own loop to grow or drain from there.
 for _, field in fields do
-	local startCount = math.random(1, field.count)
+	local startCount = math.random(field.minCount, field.count)
 	for _ = 1, startCount do
 		spawnBattery(field)
 	end

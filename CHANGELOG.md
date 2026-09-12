@@ -10,6 +10,48 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — A field's population never drops below half its cap
+
+**Goal:** yesterday's random refill let a field's count drift anywhere from
+1 up to its cap -- Ethan wants a floor: never below half the cap (rounded
+up), even though the climb from there back up to the cap should stay random.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua)
+- Added `MIN_POPULATION_RATIO = 0.5` and, per field, `minCount =
+  math.ceil(count * MIN_POPULATION_RATIO)` -- rounded UP so an odd cap (Red's
+  15) still gets a real floor (8), not a fraction. Green's cap of 1 gives a
+  floor of 1 too -- there's no room for "half" below the only possible state.
+- `removeBattery()` now checks `field.liveCount < field.minCount`
+  immediately after decrementing, and spawns a replacement RIGHT THERE if
+  so -- no waiting for `startFieldLoop`'s next check or its `SPAWN_CHANCE`
+  roll. The floor is enforced the instant it would be crossed, not
+  eventually; only the climb from floor to cap stays left to chance.
+- `startFieldLoop` is unchanged -- it still only rolls the dice for growth
+  ABOVE the floor, since removeBattery already guarantees the field never
+  falls under it.
+- The random head-start range on server boot moved from
+  `math.random(1, field.count)` to `math.random(field.minCount, field.count)`
+  -- a field can't even start below its own floor.
+
+**Concept:** splitting one number ("how full should this field be") into
+two thresholds with different enforcement styles -- a HARD floor enforced
+synchronously the moment it would be crossed, and a SOFT ceiling approached
+only probabilistically. Same idea as a thermostat: heat kicks on
+immediately at the low setpoint, but doesn't have to run constantly once
+above it.
+
+**Tested:** Play mode -- confirmed the head-start already respects both
+bounds (Green 1, Yellow 4, Blue 7, Red 14 -- all within their floor..cap
+ranges). Then, using REAL collection (teleporting the player's actual
+character onto each battery so its Hitbox.Touched fires genuinely, not a
+bypassed Destroy), collected Field_Blue (cap 8, floor 4) down repeatedly:
+8 → 7 → 6 → 5 → 4 → 4 → 4 -- it stopped descending exactly at the floor,
+with each further collection instantly backfilled. Also collected
+Field_Green's only battery (cap 1, floor 1) and confirmed it came right
+back. No console errors.
+
+---
+
 ## 2026-09-11 — A field's count is now a CAP, not a fixed number it's always at
 
 **Goal:** every field always held exactly its `count` -- the instant a
