@@ -10,6 +10,38 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Every field's battery count is now an explicit, adjustable number
+
+**Goal:** yesterday's `count` override only existed on Yellow and Blue --
+Green and Red were still silently falling through to the area-based
+formula. Ethan wants ALL FOUR fields' battery counts adjustable in the same
+obvious place, not "two are a number you can edit, two are a formula you'd
+have to go find and understand first."
+
+### [Fields.lua](src/shared/Fields.lua) — every field gets a `count`
+- Added `count = 1` to `Field_Green` and `count = 15` to `Field_Red` --
+  the exact numbers the area formula already produced for them, just
+  written down explicitly now instead of computed silently.
+- The formula itself (in BatterySpawner.server.lua) is untouched and still
+  there as a fallback for a field with no `count` set -- so a brand new
+  fifth field, added later with no `count`, would still get a sensible
+  default instead of erroring.
+
+**Concept:** the difference between a computed default and a written-down
+config value. Both produce the same number here, but one is discoverable
+(open Fields.lua, see `count = 1`, change it) and the other isn't (you'd
+have to find BatterySpawner.server.lua's `BATTERIES_PER_SQUARE_STUD` and do
+the math yourself to know what a field currently holds, let alone change
+it). Making a value EXPLICIT, even when a formula could derive the same
+number, is often the more maintainable choice once a human needs to tune it
+by hand.
+
+**Tested:** Play mode -- `CollectionService:GetTagged("BatteryPickup")`
+counts per field unchanged from before: Green 1, Yellow 4, Blue 8, Red 15
+(28 total). No console errors.
+
+---
+
 ## 2026-09-11 — Yellow and Blue fields: pinned battery counts (4 and 8)
 
 **Goal:** yesterday's density formula gave Field_Yellow and Field_Blue 1 and

@@ -22,17 +22,17 @@ local Fields = {}
 -- rarer, more valuable ones. Field_Red allows everything -- it's the same
 -- field the game started with, just recolored.
 --
--- `count` is OPTIONAL: how many batteries that field holds at once. Leave
--- it out and BatterySpawner works one out itself from the field's own area
--- (the same density the original single field used); set it here to pin an
--- exact number instead -- Green and Red are left to the formula (which
--- happens to land on 1 and 15), Yellow and Blue are pinned because Ethan
--- wants those two busier than their tiny footprints would otherwise imply.
+-- `count` is how many batteries that field holds at once -- change any
+-- number here to retune that field, nothing else needs touching. It's
+-- OPTIONAL, though: leave it off a field and BatterySpawner works one out
+-- itself from that field's own area instead (the same density the original
+-- single field used -- 960 sq studs/battery -- which is where Green's 1 and
+-- Red's 15 originally came from, now written down explicitly below).
 Fields.defs = {
-	{ name = "Field_Green",  templateNames = { "Battery_AAA" } },
+	{ name = "Field_Green",  templateNames = { "Battery_AAA" }, count = 1 },
 	{ name = "Field_Yellow", templateNames = { "Battery_AAA", "Battery" }, count = 4 },
 	{ name = "Field_Blue",   templateNames = { "Battery_AAA", "Battery", "Battery_C" }, count = 8 },
-	{ name = "Field_Red",    templateNames = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" } },
+	{ name = "Field_Red",    templateNames = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }, count = 15 },
 }
 
 -- Resolve every field's Pad instance once (WaitForChild blocks until the
