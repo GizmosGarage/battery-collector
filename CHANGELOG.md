@@ -1898,3 +1898,51 @@ confirmed the tier became "Small Server Room (8 slots max)" and the Buy
 Slot button re-enabled. Checked the Output log for the new purchase
 messages and no errors, then re-checked the GPU Shop and Player Shop
 panels were unaffected. Stopped Play afterward.
+
+## 2026-09-12 — Never save fabricated defaults over a real save that failed to load
+
+**What changed:** `PlayerData.load` already fell back to a fresh-start
+table if a returning player's real save couldn't be fetched (a DataStore
+outage, a network hiccup) -- so they could still play instead of getting
+stuck. But nothing stopped that fabricated table from later being written
+back to the DataStore: the auto-save timer, leaving, or a server shutdown
+would all call `PlayerData.save`, which didn't know the difference between
+"this is real progress" and "this is a zeroed-out fallback" -- so it would
+happily overwrite someone's actual Cash/GPUs/levels with zeros. Now
+`PlayerData.load` remembers (in a new `loadFailed` table) when a player's
+GetAsync call itself errored, and `PlayerData.save` refuses to touch the
+DataStore for them at all -- their real save sits untouched, and this
+session's play just goes unsaved. Losing one unsaved session is the safe
+side to fail on; silently erasing everything they'd earned before it isn't.
+
+**Why:** Ethan flagged that a failed load could later save fresh state
+over existing progress, risking the expensive GPU equipment players earn.
+
+**Files:** `src/server/PlayerData.lua`
+
+**Concept taught:** a `pcall` failure and a "successful call, empty
+result" look similar (both mean "I don't have real data to hand back"),
+but they mean very different things for what's safe to do NEXT -- an
+empty result is a genuine new player, safe to save over; a failed call
+tells you nothing about whether real data exists, so treating it the same
+way risks destroying data that's actually still sitting there. The fix is
+the same shape as the existing `loading` table just above it in the file
+(a plain `player -> true` set marking "this player is in an unusual
+state") -- one more instance of a pattern already used to keep two
+different load requests for the same player from racing each other.
+
+**How tested:** couldn't safely flip Studio's real "Enable Studio Access
+to API Services" setting through the available tooling (Roblox Studio
+MCP's screen capture only shows the game viewport, not Studio's own
+Game Settings dialog), so verified two ways instead. (1) A throwaway
+Luau script in Studio's command bar reproduced the exact branching with a
+MOCKED store instead of the real DataStore: a GetAsync that throws never
+resulted in a SetAsync call (0 calls, save reported "SKIPPED"), while both
+a genuine new player (GetAsync returns nil, no error) and a normal
+returning player (GetAsync returns real data) saved exactly as before (1
+call each, "WROTE") -- confirmed the guard fires only on an actual
+failure, never on legitimate empty/real data. (2) Started Play for real
+in the already-open Studio session (this player's actual save loads fine
+here) and called `PlayerData.save` directly -- no new warnings, confirming
+the added check doesn't touch the normal, unfailed path at all. Stopped
+Play afterward; no leftover script left in the place.

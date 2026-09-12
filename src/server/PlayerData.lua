@@ -28,6 +28,19 @@
 	when the whole server shuts down -- NOT after every single change,
 	which would run into DataStore's request-rate limits fast.
 
+	If a returning player's REAL save fails to load (network hiccup,
+	DataStore outage), they still get to play -- on a fabricated fresh-start
+	table, same as a brand-new player -- rather than being blocked outright.
+	But that table is NOT their real progress, so it must never be written
+	back over it: every save from here out would silently erase their
+	actual GPUs/Cash/levels with zeros. `loadFailed` remembers which
+	players are in that state, and `PlayerData.save` refuses to touch the
+	DataStore for them -- their real save sits untouched until a future
+	session loads it successfully. The tradeoff: THIS session's progress
+	for them goes unsaved entirely, which is the safe side to fail on
+	(losing one session's worth of play, vs. losing everything they'd
+	earned before it).
+
 	NOT saved (by design, for now): Batteries/mAh currently CARRIED --
 	an in-progress collecting trip resets each session, same as it always
 	has. Offline earnings (whether the data center keeps draining/paying
@@ -56,6 +69,13 @@ local cache = {}
 -- systems calling PlayerData.load at the same moment don't both fire a
 -- separate DataStore request for the same player.
 local loading = {}
+
+-- player -> true if their GetAsync call itself FAILED (not just came back
+-- empty -- an empty result means a genuine new player, which is fine to
+-- save over). `cache[player]` is fabricated defaults for these players,
+-- not their real progress, so PlayerData.save must refuse to write it --
+-- see the header comment above for why.
+local loadFailed = {}
 
 -- Every function registered with PlayerData.registerSaver, called in order
 -- whenever a save happens.
@@ -132,7 +152,13 @@ function PlayerData.load(player)
 		cache[player] = fillMissingDefaults(saved)
 	else
 		if not ok then
-			warn(("PlayerData: couldn't load %s's save (%s) -- starting fresh"):format(player.Name, tostring(saved)))
+			-- The request itself failed -- we have NO idea whether this
+			-- player has real progress sitting in the DataStore already.
+			-- Mark it so PlayerData.save refuses to overwrite that unknown
+			-- real save with the fabricated one they're about to play on.
+			warn(("PlayerData: couldn't load %s's save (%s) -- starting fresh, WON'T be saved this session")
+				:format(player.Name, tostring(saved)))
+			loadFailed[player] = true
 		end
 		cache[player] = defaultData()
 	end
@@ -155,6 +181,16 @@ function PlayerData.save(player)
 	local data = cache[player]
 	if not data then
 		return   -- never loaded (e.g. left before setup finished) -- nothing to save
+	end
+
+	if loadFailed[player] then
+		-- Their REAL save never loaded -- `data` is a fabricated fresh
+		-- start, not their progress. Writing it would permanently erase
+		-- whatever they actually have on the DataStore, so refuse: this
+		-- session just goes unsaved instead (see the header comment).
+		warn(("PlayerData: skipping %s's save -- their real save never loaded this session, refusing to overwrite it")
+			:format(player.Name))
+		return
 	end
 
 	for _, saver in savers do
@@ -182,6 +218,7 @@ end
 function PlayerData.release(player)
 	cache[player] = nil
 	loading[player] = nil
+	loadFailed[player] = nil
 end
 
 -- Register a function to run right after a leaving player's final save and
