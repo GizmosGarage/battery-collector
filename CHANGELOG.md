@@ -10,6 +10,71 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — One Upgrade Shop split into two: Player Shop and Data Center Shop
+
+**Goal:** all four upgrades lived on one pad. Ethan wants them separated by
+WHO they benefit -- Speed and Capacity make the PLAYER better at collecting;
+Efficiency and Cash make the DATA CENTER better at cashing out -- as two
+distinct platforms.
+
+### World geometry (built live in Studio, not tracked in this repo)
+- Cloned the existing `Workspace.Shop` model (Pad + floating Sign +
+  Billboard) to get a second platform with identical structure and text
+  styling, rather than rebuilding it from scratch.
+- Renamed the original to `Shop_Player`, kept its blue Pad and position
+  (6, 0.5, 75), relabeled its sign "PLAYER SHOP".
+- The clone became `Shop_DataCenter`: purple Pad
+  (`Color3.fromRGB(150, 90, 200)`) at (28, 0.5, 75) -- a 10-stud gap from
+  Shop_Player's edge -- sign relabeled "DATA CENTER SHOP". Verified with the
+  same bounding-box overlap check used for the four fields: no overlaps
+  with each other, the Spawn pad, the Data Center, or any field.
+
+### [Upgrades.lua](src/shared/Upgrades.lua) — new `Upgrades.shops` grouping
+- Added `Upgrades.shops`: an ordered list of `{ title, ids }`, one entry per
+  physical shop platform -- `PLAYER SHOP` = `{Speed, Capacity}`,
+  `DATA CENTER SHOP` = `{Efficiency, Cash}`. This is the single source of
+  truth for which upgrade lives on which platform.
+- `Upgrades.order` (used nowhere else) is now DERIVED from `Upgrades.shops`
+  by concatenation, instead of being listed separately -- so the grouping
+  and the flat list can't quietly drift apart.
+
+### [ShopUI.client.lua](src/client/ShopUI.client.lua) — one panel per shop
+- The whole panel-building block (title, Cash line, rows, Buy buttons,
+  refresh) is now `buildShopPanel(shopDef, padName)`, called once per entry
+  in `Upgrades.shops` -- each call makes its OWN `ScreenGui` (named
+  `ShopUI_Shop_Player` / `ShopUI_Shop_DataCenter`) sized to however many
+  rows that shop actually has (`94 + 84 * #shopDef.ids`), instead of one
+  hardcoded 4-row panel.
+- `SHOP_PAD_NAMES = { "Shop_Player", "Shop_DataCenter" }` maps each
+  `Upgrades.shops` entry (by matching index) to its Workspace pad name --
+  world-geometry names stay in the client script that needs them, same as
+  before the split, not inside the shared `Upgrades` module.
+- The show/hide `RunService.Heartbeat` loop now runs the SAME
+  footprint-bounding-box check (yesterday's Shop fix) once per panel, so
+  standing on one shop's pad shows only that panel -- never both, never
+  neither incorrectly.
+- No change to `Shop.server.lua`: purchases were always validated purely by
+  upgrade id, never by which pad the request came from, so the server-side
+  half of the shop needed zero edits.
+
+**Concept:** turning a single hardcoded thing (one panel, four rows, one
+pad) into a small function parameterized over a LIST of configs
+(`Upgrades.shops`), called once per entry -- adding a third shop later would
+mean adding one entry to that list and one name to `SHOP_PAD_NAMES`, not
+copy-pasting a whole panel's worth of GUI code again.
+
+**Tested:** Play mode. Teleported the player onto `Shop_Player` -- confirmed
+only `ShopUI_Shop_Player` enabled, showing exactly Walk Speed and Capacity;
+teleported onto `Shop_DataCenter` -- confirmed the SWAP (Player panel off,
+Data Center panel on) showing exactly Efficiency and Cash. Gave the player
+1000 Cash and fired the real `BuyUpgrade` RemoteEvent for Speed the same
+way the Buy button does -- `SpeedLevel` went 0 → 1, Cash dropped 1000 → 950
+(the level-0 cost), and the Player Shop panel's row text refreshed live to
+show the new level and effect. No console errors (only the expected
+server-side purchase print).
+
+---
+
 ## 2026-09-11 — Instant field speed switching; Shop no longer opens off-pad
 
 Two separate responsiveness bugs, both about checking the WRONG thing (or

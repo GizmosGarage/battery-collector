@@ -17,8 +17,27 @@
 
 local Upgrades = {}
 
--- Display / iteration order for the shop UI.
-Upgrades.order = { "Speed", "Capacity", "Efficiency", "Cash" }
+-- The shop is TWO platforms now, not one -- Speed/Capacity make YOU better
+-- at collecting, Efficiency/Cash make the DATA CENTER better at cashing
+-- out, so each pair lives on its own pad (see ShopUI.client.lua). `title`
+-- is what that pad's floating sign says. This is the single source of
+-- truth for which upgrade belongs on which platform.
+Upgrades.shops = {
+	{ title = "PLAYER SHOP",       ids = { "Speed", "Capacity" } },
+	{ title = "DATA CENTER SHOP",  ids = { "Efficiency", "Cash" } },
+}
+
+-- Every upgrade id, in canonical order -- derived from Upgrades.shops
+-- (rather than listed a second time) so the two can't drift out of sync.
+-- Nothing currently needs this beyond iteration order, but it's here for
+-- any future code that wants "all four, in order" without caring which
+-- shop each is on.
+Upgrades.order = {}
+for _, shop in Upgrades.shops do
+	for _, id in shop.ids do
+		table.insert(Upgrades.order, id)
+	end
+end
 
 -- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales every
 -- other size up from this by the same RARITY_FALLOFF it uses for spawn odds

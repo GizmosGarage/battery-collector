@@ -59,7 +59,7 @@ Battery Collector/
 │   │   ├── BatteryGlow.client.lua        rarity glow (bigger/brighter = rarer)
 │   │   ├── BatteryCollision.client.lua   walk through batteries once you're full
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
-│   │   └── ShopUI.client.lua             the upgrade shop panel (built entirely in code)
+│   │   └── ShopUI.client.lua             the two upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    single source of truth for all 4 upgrades' costs/effects
 │       └── Fields.lua      single source of truth for the 4 fields' names + allowed battery sizes
@@ -107,7 +107,11 @@ specific things live *only* in the place file, not this repo:
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter` (Pad + floating sign) and `Workspace.Shop` (Pad + sign)
+- `Workspace.DataCenter` (Pad + floating sign) and the two shop platforms,
+  `Workspace.Shop_Player` (Speed, Capacity) and `Workspace.Shop_DataCenter`
+  (Efficiency, Cash) -- each Pad + sign, same as before the split;
+  `Upgrades.lua`'s `Upgrades.shops` is the only place which upgrades belong
+  to which shop is recorded
 - The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
   only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
   D — this is the original single field, just recolored). Each is a `Model`
