@@ -7,19 +7,24 @@
 	fuel in the tank.
 
 	Every second the data center runs, it DRAWS power from that reserve --
-	Upgrades.powerNeeded(CashLevel) mAh -- and pays out Cash:
+	the COMBINED power draw of every GPU installed in your equipment slots
+	(see GPUs.lua and Shop.server.lua) -- and pays out the COMBINED Cash/sec
+	of those same GPUs:
 
 		reserve added  = mAh dumped * Efficiency upgrade's multiplier
-		power draw/sec = Upgrades.powerNeeded(CashLevel)   -- more GPUs, more draw
-		cash/sec       = Upgrades.effect("Cash", CashLevel)
+		power draw/sec = sum of installed GPUs' powerDraw
+		cash/sec       = sum of installed GPUs' cashPerSec
 
-	Buying Cash ("adding a GPU") pays more but drains the reserve faster. Buying
-	Efficiency makes every battery you dump deliver more reserve. Those two
-	upgrades now directly pull against each other -- Cash is no longer a free
-	upgrade to stack.
+	This is all-or-nothing per second, same as before the GPU system: if the
+	reserve can cover the WHOLE rig's draw, every installed GPU pays out and
+	the reserve drains by the full total; if it can't, the whole rig idles
+	this tick -- nothing partially runs. (A future pass could let individual
+	GPUs "brown out" independently; this first pass keeps the simpler
+	single-reserve-vs-single-draw model the game already had.)
 
-	If the reserve can't cover a full second's draw, the data center just idles
-	-- whatever's left stays banked for your next dump; nothing is destroyed.
+	Buying a bigger/second GPU pays more but drains the reserve faster.
+	Buying Efficiency makes every battery you dump deliver more reserve.
+	Those two pull against each other -- more GPUs is not a free upgrade.
 
 	Dumping again while it's still running just adds more reserve.
 	Each player has their own independent run; the Pad is only the trigger.
@@ -31,12 +36,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
+local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 
 -- ============================ CONFIG ============================
 local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 -- power draw is defined per second)
 local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for this long
--- Cash/sec, power draw (mAh/sec), and dump efficiency all come per-player from
--- the Upgrades module, scaled by that player's purchased upgrade levels.
+-- Cash/sec and power draw come from whichever GPUs a player has installed
+-- (see rigTotals below); dump efficiency still comes from the Upgrades module.
 -- ==============================================================
 
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
@@ -48,13 +54,30 @@ local runs = {}
 -- player -> os.clock() of their last dump (debounce)
 local lastDump = {}
 
+-- Sum up a player's whole rig, straight off the attributes Shop.server.lua
+-- publishes ("UnlockedSlots", "Slot<N>GPU") -- this script never needs to
+-- know about purchases or slots, just the totals they add up to.
+local function rigTotals(player)
+	local unlocked = player:GetAttribute("UnlockedSlots") or 0
+	local cashPerSec, powerDraw = 0, 0
+	for i = 1, unlocked do
+		local id = player:GetAttribute("Slot" .. i .. "GPU")
+		local gpu = id ~= "" and GPUs.get(id)
+		if gpu then
+			cashPerSec += gpu.cashPerSec
+			powerDraw += gpu.powerDraw
+		end
+	end
+	return cashPerSec, powerDraw
+end
+
 -- Tell THIS player's client roughly how many seconds their reserve will last at
 -- their CURRENT power draw. The Pad is one shared part, so its "ONLINE" glow is
 -- drawn per-client from this attribute (see DataCenterDisplay.client.lua) -- if
 -- the server lit the Pad, everyone would see it lit whenever anyone's ran.
 local function publish(player)
 	local reserve = runs[player] or 0
-	local powerDraw = Upgrades.powerNeeded(player:GetAttribute("CashLevel") or 0)
+	local _, powerDraw = rigTotals(player)
 	local secondsLeft = (powerDraw > 0) and math.floor(reserve / powerDraw) or 0
 	player:SetAttribute("DataCenterSecondsLeft", secondsLeft)
 end
@@ -119,12 +142,12 @@ task.spawn(function()
 		task.wait(PAYOUT_INTERVAL)
 
 		for player, reserve in runs do
-			local powerDraw = Upgrades.powerNeeded(player:GetAttribute("CashLevel") or 0)
+			local cashPerSec, powerDraw = rigTotals(player)
 
 			if reserve >= powerDraw then
 				local cash = getStat(player, "Cash")
 				if cash then
-					cash.Value += Upgrades.effect("Cash", player:GetAttribute("CashLevel") or 0)
+					cash.Value += cashPerSec
 				end
 				runs[player] = reserve - powerDraw
 			end

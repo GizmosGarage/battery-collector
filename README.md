@@ -8,10 +8,13 @@ happens, so the "why" sticks, not just the "what."
 bigger and are worth more, but vanish faster if you don't rush them) →
 carrying capacity is limited, so you decide when to head back → dump your
 batteries at the AI Data Center, which converts them into a power reserve and
-burns through it every second to pay you Cash → spend Cash at the Upgrade Shop
-on four upgrades that compete for the same money (better at collecting, or
-better at cashing out — buying more Cash output also makes the data center
-hungrier for power, so it's a real tradeoff, not just "buy everything").
+burns through it every second to pay you Cash → spend Cash at the Player Shop
+(Speed, Capacity) to collect better, or at the Data Center Shop (Power
+Conversion, plus GPU hardware) to cash out better. Cash/sec isn't a level
+upgrade anymore — it's real GPUs: 1-4 equipment slots, each filled from a
+5-tier catalog where a better card pays more but also draws more power, so
+racking up GPUs is a genuine tradeoff against your power reserve, not just
+"buy everything."
 
 ## Working agreement (read this first, human or AI)
 
@@ -61,7 +64,8 @@ Battery Collector/
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
 │   │   └── ShopUI.client.lua             the two upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
-│       ├── Upgrades.lua    single source of truth for all 4 upgrades' costs/effects
+│       ├── Upgrades.lua    single source of truth for the 3 level upgrades' costs/effects
+│       ├── GPUs.lua        single source of truth for the GPU catalog + equipment slots
 │       └── Fields.lua      single source of truth for the 4 fields' names + allowed battery sizes
 ├── Models/                 reference art (battery renders used to build the 3-D models)
 └── Prompts/                the AI prompts used to generate the model and image references
@@ -109,9 +113,10 @@ specific things live *only* in the place file, not this repo:
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
 - `Workspace.DataCenter` (Pad + floating sign) and the two shop platforms,
   `Workspace.Shop_Player` (Speed, Capacity) and `Workspace.Shop_DataCenter`
-  (Efficiency, Cash) -- each Pad + sign, same as before the split;
-  `Upgrades.lua`'s `Upgrades.shops` is the only place which upgrades belong
-  to which shop is recorded
+  (Power Conversion, plus the GPU slot/catalog section) -- each Pad + sign,
+  same as before the split; `Upgrades.lua`'s `Upgrades.shops` records which
+  LEVEL upgrades belong to which shop, and `GPUs.lua` owns the GPU catalog
+  and slot prices shown on the Data Center Shop
 - The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
   only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
   D — this is the original single field, just recolored). Each is a `Model`

@@ -1,36 +1,38 @@
 --[[
 	Upgrades  --  ModuleScript, lives in ReplicatedStorage (shared)
 
-	The single source of truth for every shop upgrade: what each level does, and
-	what the next level costs. Both the server (Shop, DataCenter, PlayerSpeed,
-	BatterySpawner) and the client (ShopUI) require this, so the numbers can
-	never disagree.
+	The single source of truth for every LEVEL-based shop upgrade: what each
+	level does, and what the next level costs. Both the server (Shop,
+	PlayerSpeed, BatterySpawner) and the client (ShopUI) require this, so the
+	numbers can never disagree.
 
 	Levels are 0-based. Level 0 = the base value, no purchases made.
 
-	Four upgrades competing for the same Cash is the whole point: Speed and
-	Capacity make you better at COLLECTING; Efficiency and Cash make you better
-	at CASHING OUT -- and now pull directly against each other: Cash pays more
-	but makes the data center draw more power per second, Efficiency stretches
-	how much usable power each battery you dump actually delivers.
+	Speed and Capacity make YOU better at collecting; Power Conversion makes
+	each battery you dump deliver more usable reserve. Cash-per-second used
+	to be a level here too, but that's GPU hardware now -- see GPUs.lua and
+	Shop.server.lua's slot system -- so this module only covers the three
+	upgrades that are still a simple "buy the next level."
 --]]
 
 local Upgrades = {}
 
--- The shop is TWO platforms now, not one -- Speed/Capacity make YOU better
--- at collecting, Efficiency/Cash make the DATA CENTER better at cashing
--- out, so each pair lives on its own pad (see ShopUI.client.lua). `title`
--- is what that pad's floating sign says. This is the single source of
--- truth for which upgrade belongs on which platform.
+-- The shop is TWO platforms -- Speed/Capacity make YOU better at
+-- collecting, Power Conversion (plus GPU hardware -- see GPUs.lua) makes
+-- the DATA CENTER better at cashing out, so each pair lives on its own pad
+-- (see ShopUI.client.lua). `title` is what that pad's floating sign says.
+-- `gpuSection = true` tells ShopUI to also build the GPU slot/catalog rows
+-- on that platform -- this module doesn't need to know anything about GPUs
+-- itself, just that its shop has room for them.
 Upgrades.shops = {
 	{ title = "PLAYER SHOP",       ids = { "Speed", "Capacity" } },
-	{ title = "DATA CENTER SHOP",  ids = { "Efficiency", "Cash" } },
+	{ title = "DATA CENTER SHOP",  ids = { "Efficiency" }, gpuSection = true },
 }
 
 -- Every upgrade id, in canonical order -- derived from Upgrades.shops
 -- (rather than listed a second time) so the two can't drift out of sync.
 -- Nothing currently needs this beyond iteration order, but it's here for
--- any future code that wants "all four, in order" without caring which
+-- any future code that wants "all of them, in order" without caring which
 -- shop each is on.
 Upgrades.order = {}
 for _, shop in Upgrades.shops do
@@ -41,9 +43,8 @@ end
 
 -- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales every
 -- other size up from this by the same RARITY_FALLOFF it uses for spawn odds
--- (AAA 500 / AA 1500 / C 4500 / D 13500), and the data center's base power need
--- (below) is anchored to this SAME number -- so "a battery's worth of power"
--- means the same thing everywhere it's used, not two numbers that happen to match.
+-- (AAA 500 / AA 1500 / C 4500 / D 13500) -- "a battery's worth of power" means
+-- the same thing everywhere this number is used.
 Upgrades.BASE_BATTERY_MAH = 500
 
 Upgrades.defs = {
@@ -70,20 +71,11 @@ Upgrades.defs = {
 	},
 
 	Efficiency = {
-		name = "Power conversion efficiency",
+		name = "Power Conversion",   -- distinct from a GPU's own cash-per-mAh efficiency (see GPUs.lua)
 		base = 1,        -- multiplier on the reserve a dumped battery delivers, at level 0 (no bonus)
 		perLevel = 0.2,  -- +20% more usable reserve per level
 		unit = "x",
 		decimal = true,
-		baseCost = 50,
-		growth = 1.5,
-	},
-
-	Cash = {
-		name = "Cash per second",
-		base = 5,        -- Cash paid each second while the data center runs, at level 0
-		perLevel = 2,
-		unit = "/s",
 		baseCost = 50,
 		growth = 1.5,
 	},
@@ -109,19 +101,6 @@ function Upgrades.formatEffect(id, value)
 		return string.format("%.1f%s", value, d.unit)
 	end
 	return string.format("%d%s", value, d.unit)
-end
-
--- How much power (mAh/sec) the data center's GPUs need to sustain a given Cash
--- upgrade level -- each level is another GPU unit added, and more GPUs need
--- more power. Anchored so the BASE (level 0) need is exactly one AAA battery's
--- worth of power per second -- "the data center burns a battery a second just to
--- stay on." DataCenter.server.lua actually enforces this against a real power
--- reserve (see there); this is also shown on the DataCenter sign so the number
--- is visible before it bites.
-local CASH_POWER_RATIO = Upgrades.BASE_BATTERY_MAH / Upgrades.defs.Cash.base   -- mAh/sec of draw per 1 Cash/sec of payout
-
-function Upgrades.powerNeeded(cashLevel)
-	return Upgrades.effect("Cash", cashLevel) * CASH_POWER_RATIO
 end
 
 return Upgrades

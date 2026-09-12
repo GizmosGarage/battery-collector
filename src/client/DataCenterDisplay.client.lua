@@ -12,15 +12,16 @@
 	property changes to a shared part only affect our own view.
 
 	The sign also shows how much power (mAh/sec) THIS player's data center needs
-	to run at their current Cash upgrade level -- more Cash levels bought (more
-	GPU units added) means a bigger draw. That number comes straight from the
-	shared Upgrades module, so it always matches what the shop shows.
+	to run -- the COMBINED draw of every GPU currently installed in their
+	equipment slots (see GPUs.lua). We read the same "UnlockedSlots"/"Slot<N>GPU"
+	attributes Shop.server.lua publishes and look each GPU up in the shared
+	catalog, so this always matches what the shop shows.
 --]]
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
+local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -36,6 +37,20 @@ local billboard = sign and sign:WaitForChild("Billboard", 5)
 local statusLabel = billboard and billboard:WaitForChild("Status", 5)
 local powerLabel = billboard and billboard:WaitForChild("PowerDraw", 5)
 
+-- Sum the powerDraw of every GPU installed in our unlocked slots.
+local function totalPowerDraw()
+	local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 0
+	local total = 0
+	for i = 1, unlocked do
+		local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
+		local gpu = id ~= "" and GPUs.get(id)
+		if gpu then
+			total += gpu.powerDraw
+		end
+	end
+	return total
+end
+
 local function render()
 	local secondsLeft = LocalPlayer:GetAttribute("DataCenterSecondsLeft") or 0
 	local online = secondsLeft > 0
@@ -48,11 +63,14 @@ local function render()
 	end
 
 	if powerLabel then
-		local draw = Upgrades.powerNeeded(LocalPlayer:GetAttribute("CashLevel") or 0)
-		powerLabel.Text = string.format("Needs %d mAh/s to run", draw)
+		powerLabel.Text = string.format("Needs %d mAh/s to run", totalPowerDraw())
 	end
 end
 
 LocalPlayer:GetAttributeChangedSignal("DataCenterSecondsLeft"):Connect(render)
-LocalPlayer:GetAttributeChangedSignal("CashLevel"):Connect(render)   -- power draw changes when Cash is upgraded
+LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(render)
+for i = 1, GPUs.MAX_SLOTS do
+	-- Power draw changes whenever a GPU is installed/removed from any slot.
+	LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(render)
+end
 render()

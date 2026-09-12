@@ -10,6 +10,103 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — Cash upgrade replaced with real GPU hardware (first pass)
+
+**Goal:** the old Cash-per-second upgrade was one number that went up
+forever. Ethan wants actual hardware instead: 1-4 equipment SLOTS, filled
+from a GPU catalog where a better card pays more but also draws more
+power -- so racking up GPUs is a real tradeoff against your power reserve,
+not a free stack. This is an explicitly first-pass implementation (chosen
+scope: "core mechanic first" over a full swap/storage UI) -- see "Deferred"
+below for what's intentionally left out.
+
+### [GPUs.lua](src/shared/GPUs.lua) — new shared module, the GPU catalog
+- 5 GPUs, cheapest first: Starter ($100, 5 Cash/s, 40 mAh/s draw), Basic AI
+  ($1500, 12, 80), Advanced AI ($12500, 28, 160), Data Center ($100000, 65,
+  320), Neural Accelerator ($750000, 150, 640). Each tier roughly DOUBLES
+  the power draw of the last but pays slightly MORE than double the Cash/s
+  -- "one better card beats two of the last one, by a little."
+- `GPUs.MAX_SLOTS = 4`, `GPUs.SLOT_PRICES = {0, 500, 10000, 100000}` (slot 1
+  free), `GPUs.STARTER_ID` (the free GPU every player starts with),
+  `GPUs.get(id)` to look a catalog entry up by its stored id.
+
+### [Upgrades.lua](src/shared/Upgrades.lua) — Cash removed, Efficiency renamed
+- Deleted the `Cash` def and `Upgrades.powerNeeded` entirely -- Cash/sec is
+  hardware now, not a level.
+- `Efficiency`'s display name changed to "Power Conversion" (Ethan's
+  request) -- distinct from a GPU's own cash-per-mAh efficiency. Same id,
+  same numbers, only the label changed.
+- `Upgrades.shops`'s Data Center Shop entry is now `{ ids = {"Efficiency"},
+  gpuSection = true }` -- that flag tells ShopUI to build the GPU section
+  there without Upgrades.lua needing to know anything about GPUs itself.
+
+### [Shop.server.lua](src/server/Shop.server.lua) — owns the GPU rig now too
+- New per-player `rigs` table: `{ unlockedSlots, gpus = {[slot] = gpuId} }`.
+  Every player starts with 1 unlocked slot holding a free Starter GPU --
+  the ONLY GPU anyone gets without paying.
+- Published as attributes (`UnlockedSlots`, `Slot1GPU`..`Slot4GPU`, empty
+  string = empty slot) -- same decoupled pattern as upgrade levels, so
+  DataCenter.server.lua and the client never touch this script's tables.
+- Two new RemoteEvents: `BuyGPUSlot` (unlock the next slot at its price) and
+  `BuyGPU` (buy a catalog GPU into the first empty unlocked slot). Both
+  validate everything server-side -- real id, affordable, room to install.
+
+### [DataCenter.server.lua](src/server/DataCenter.server.lua) — payout from the whole rig
+- `rigTotals(player)` sums installed GPUs' `cashPerSec`/`powerDraw` straight
+  off the attributes Shop.server.lua publishes. The payout tick and the
+  "seconds left" display both switched from `Upgrades.powerNeeded(CashLevel)`
+  to this sum.
+- Kept the SAME all-or-nothing-per-second model the game already had: if
+  the reserve covers the WHOLE rig's draw, everything pays out and drains;
+  if not, the whole rig idles that tick. (Noted as a candidate for a more
+  granular per-GPU "brownout" model later -- not needed for this pass.)
+
+### [DataCenterDisplay.client.lua](src/client/DataCenterDisplay.client.lua) & [ShopUI.client.lua](src/client/ShopUI.client.lua)
+- The sign's power-draw readout now sums installed GPUs client-side the
+  same way, listening for changes on `UnlockedSlots` and every `Slot<N>GPU`.
+- ShopUI's Data Center Shop panel gained a GPU section: one row to unlock
+  the next slot (shows `X / 4 unlocked` plus the names of installed GPUs),
+  and one row per catalog GPU (price, Cash/sec, power draw) with a Buy
+  button that reads "No Empty Slot" when the rig is full or "Buy $price"
+  otherwise. Row-building was factored into a shared `makeRowFrame` helper
+  so upgrade rows, the slot row, and GPU rows all use one code path instead
+  of three copies of the same Frame/TextLabel/TextButton setup.
+
+### Deferred (by design -- this was the chosen scope for this pass)
+- **No swapping or storage.** A bought GPU auto-installs into the first
+  empty slot; there's no way yet to pull an installed GPU back out or bank
+  a spare. Buying with every slot full is just refused.
+- **No persistence.** Like every other stat in this game, a player's rig
+  resets on rejoin -- saving across sessions (mentioned in Ethan's own
+  design notes as eventually necessary for this progression) is a separate,
+  later piece of work.
+- **All-or-nothing power**, not per-GPU brownouts (see DataCenter.server.lua
+  section above).
+
+**Concept:** replacing a single scalar (a "level" that only goes up) with a
+small INVENTORY -- a fixed number of slots, each holding one item from a
+catalog. The same server-owns-state/publish-as-attributes pattern the level
+upgrades already used extends cleanly to it: the server never has to trust
+what a client claims to have installed, because the client never has write
+access to anything but a purchase REQUEST.
+
+**Tested:** Play mode, all server-side. Confirmed a fresh player starts with
+`UnlockedSlots=1`, `Slot1GPU="Starter"`. Dumped 500 mAh -- reserve/power
+math matched hand-calculated numbers exactly every step (12s → drained
+40/tick, landed on 3s left after 9 ticks paying $45 total). Bought slot 2
+($500) and a Basic AI GPU ($1500) via the real RemoteEvents (same calls the
+Buy buttons make) -- Cash dropped exactly $2000, `Slot2GPU="Basic"`, the
+Data Center's power-draw sign updated to "120 mAh/s" (40+80), and a second
+dump showed the COMBINED payout (2 ticks × $17 = $34) and drain (120/tick)
+landing exactly on the hand-calculated numbers. Filled all 4 slots (Cash
+math exact: 500000 → 277500 across 4 purchases) and confirmed a 5th GPU
+purchase was silently refused -- slot 4 kept its GPU, no cash lost, no
+error. Verified the ShopUI panel text and every Buy button's label/state
+("All Slots Unlocked", "No Empty Slot") matched the underlying attributes
+throughout. No console errors.
+
+---
+
 ## 2026-09-12 — One Upgrade Shop split into two: Player Shop and Data Center Shop
 
 **Goal:** all four upgrades lived on one pad. Ethan wants them separated by
