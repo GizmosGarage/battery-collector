@@ -1,10 +1,10 @@
 --[[
 	ShopUI  --  LocalScript, StarterPlayer > StarterPlayerScripts
 
-	The upgrade shop's screen. Walk onto Workspace.Shop.Pad and this panel
-	appears; walk off and it hides. One row per upgrade in Upgrades.order. Each
-	shows the current effect, the next-level effect, and the Cash cost, with a
-	Buy button.
+	The upgrade shop's screen. Walk onto Workspace.Shop.Pad -- actually onto
+	its footprint, not just near it -- and this panel appears; walk off and
+	it hides. One row per upgrade in Upgrades.order. Each shows the current
+	effect, the next-level effect, and the Cash cost, with a Buy button.
 
 	Buying just fires the BuyUpgrade RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server bumps our level (an attribute), the
@@ -25,7 +25,6 @@ local LocalPlayer = Players.LocalPlayer
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 -- ============================ CONFIG ============================
-local SHOW_RANGE = 12   -- studs from the pad centre within which the panel shows
 local COLOR_BG        = Color3.fromRGB(24, 26, 32)
 local COLOR_ROW       = Color3.fromRGB(36, 39, 48)
 local COLOR_BUY_OK    = Color3.fromRGB(60, 190, 110)
@@ -168,16 +167,28 @@ task.spawn(function()
 	refresh()
 end)
 
--- ---------- show / hide based on distance to the pad ----------
+-- ---------- show / hide based on actually standing on the pad ----------
+-- A plain radius check used to open this at 12 studs from the pad's CENTRE --
+-- for a 12x12 pad that's a circle poking out past every edge, so it could
+-- pop open while still standing well off the platform. This checks the
+-- pad's real footprint instead (same 2-D bounding-box test Fields.lua and
+-- BatterySpawner use for the battery fields), so it only shows once you're
+-- actually on it.
+local function isOnPad(position)
+	local half = shopPad.Size / 2
+	local min, max = shopPad.Position - half, shopPad.Position + half
+	return position.X >= min.X and position.X <= max.X
+		and position.Z >= min.Z and position.Z <= max.Z
+end
+
 RunService.Heartbeat:Connect(function()
 	local character = LocalPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local near = root ~= nil
-		and (root.Position - shopPad.Position).Magnitude <= SHOW_RANGE
+	local onPad = root ~= nil and isOnPad(root.Position)
 
-	if near ~= screen.Enabled then
-		screen.Enabled = near
-		if near then
+	if onPad ~= screen.Enabled then
+		screen.Enabled = onPad
+		if onPad then
 			refresh()
 		end
 	end

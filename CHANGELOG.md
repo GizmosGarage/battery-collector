@@ -10,6 +10,51 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Instant field speed switching; Shop no longer opens off-pad
+
+Two separate responsiveness bugs, both about checking the WRONG thing (or
+checking it too rarely) to detect "am I actually on this platform."
+
+### [PlayerSpeed.server.lua](src/server/PlayerSpeed.server.lua) — polling was the delay
+- **Bug:** the on/off-field check ran on a `task.wait(0.2)` loop -- up to a
+  fifth of a second between actually crossing a field's edge and
+  `Humanoid.WalkSpeed` catching up. Noticeable as a "lag" right at the
+  boundary.
+- **Fix:** replaced the timed loop with `RunService.Heartbeat:Connect(...)`
+  -- the SAME per-frame-check pattern `ShopUI.client.lua` already used for
+  its own pad. Now the check runs every server frame; `appliedSpeed[player]`
+  still guards against writing `WalkSpeed` when nothing actually changed, so
+  this isn't doing more real work most frames -- just checking more often.
+
+### [ShopUI.client.lua](src/client/ShopUI.client.lua) — wrong shape of check
+- **Bug:** `(root.Position - shopPad.Position).Magnitude <= 12` is a
+  12-stud-radius CIRCLE around the pad's centre. `Shop.Pad` is a 12x12
+  SQUARE (half-width 6) -- so standing up to ~6 studs past any edge (still
+  inside the circle, outside the square) opened the panel while off the
+  platform entirely.
+- **Fix:** replaced the radius check with `isOnPad(position)` -- the exact
+  same 2-D bounding-box test `Fields.lua`/`BatterySpawner` use for the
+  battery fields, read live off `shopPad.Size`/`Position`. Only opens once
+  you're actually standing on the pad's real footprint.
+
+**Concept:** a circle and a square that happen to be roughly the same size
+are NOT the same shape -- a radius check silently over- or under-covers a
+non-circular area depending on where you approach from. When something
+already has a real geometric footprint (a `Part`'s `Size`), test against
+THAT footprint directly instead of approximating it with a magnitude
+check. Also: a periodic poll trades responsiveness for a (here,
+unnecessary) cut in how often a cheap check runs -- when the check is cheap
+and the guard against redundant writes already exists, per-frame is free.
+
+**Tested:** Play mode. Speed: teleported onto Field_Green and sampled
+`Humanoid.WalkSpeed` frame-by-frame -- caught up within 1 extra frame
+(~16-33ms), down from up to 200ms. Shop: teleported the player 9 studs off
+the pad's centre (inside the OLD 12-stud radius, outside the pad's real
+6-stud half-width) and confirmed `ShopUI.Enabled` stayed `false`; teleported
+onto the pad and confirmed it flipped `true`. No console errors.
+
+---
+
 ## 2026-09-11 — A field's population never drops below half its cap
 
 **Goal:** yesterday's random refill let a field's count drift anywhere from

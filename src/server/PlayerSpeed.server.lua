@@ -15,14 +15,17 @@
 	    Upgrades.lua). Which field you're on doesn't matter -- ALL four give
 	    you your true speed; only which battery SIZES you find differ.
 
-	A loop checks every player's position against Fields.isOnAnyField (the
-	same per-field bounding-box test BatterySpawner uses to keep batteries
-	on their own Pad) a few times a second, and only touches
-	Humanoid.WalkSpeed when which zone they're in -- or their SpeedLevel --
-	actually changes.
+	A check runs every server frame (RunService.Heartbeat) against every
+	player's position, using Fields.isOnAnyField -- the same per-field
+	bounding-box test BatterySpawner uses to keep batteries on their own
+	Pad -- so stepping onto or off a field changes WalkSpeed the very next
+	frame, not up to a fifth of a second later. It only actually TOUCHES
+	Humanoid.WalkSpeed when which zone the player's in -- or their
+	SpeedLevel -- has changed since the last frame.
 --]]
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local StarterPlayer = game:GetService("StarterPlayer")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -32,7 +35,6 @@ local Fields = require(ReplicatedStorage:WaitForChild("Fields"))
 -- ============================ CONFIG ============================
 local MAX_WALKSPEED    = 60   -- upper limit on TRUE speed, so it stays controllable
 local NORMAL_WALKSPEED = 16   -- Roblox's own default WalkSpeed -- flat, never upgraded
-local CHECK_INTERVAL   = 0.2  -- seconds between on/off-field checks (WalkSpeed doesn't need every physics frame)
 -- ==============================================================
 
 -- Characters spawn off every field (see Workspace.SpawnLocation), so start
@@ -98,13 +100,11 @@ Players.PlayerRemoving:Connect(function(player)
 	appliedSpeed[player] = nil
 end)
 
--- The on/off-field check itself: cheap position test, run a few times a
--- second for every player rather than on every physics frame.
-task.spawn(function()
-	while true do
-		task.wait(CHECK_INTERVAL)
-		for _, player in Players:GetPlayers() do
-			applySpeed(player)
-		end
+-- The on/off-field check itself: a cheap position test, run for every
+-- player on every server frame -- so the moment you cross a field's edge,
+-- your very next frame has the right WalkSpeed.
+RunService.Heartbeat:Connect(function()
+	for _, player in Players:GetPlayers() do
+		applySpeed(player)
 	end
 end)
