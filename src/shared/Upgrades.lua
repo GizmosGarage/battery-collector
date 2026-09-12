@@ -8,25 +8,29 @@
 
 	Levels are 0-based. Level 0 = the base value, no purchases made.
 
-	Speed and Capacity make YOU better at collecting; Power Conversion makes
-	each battery you dump deliver more usable reserve. Cash-per-second used
-	to be a level here too, but that's GPU hardware now -- see GPUs.lua and
-	Shop.server.lua's slot system -- so this module only covers the three
-	upgrades that are still a simple "buy the next level."
+	Speed and Capacity make YOU better at collecting. Cash-per-second used to
+	be a level here too (and dumping used to have its own Power Conversion
+	level on top of it), but both are GPU hardware and a straight 1:1 dump
+	now -- see GPUs.lua and Shop.server.lua's slot system -- so this module
+	only covers the two upgrades that are still a simple "buy the next level."
 --]]
 
 local Upgrades = {}
 
--- The shop is TWO platforms -- Speed/Capacity make YOU better at
--- collecting, Power Conversion (plus GPU hardware -- see GPUs.lua) makes
--- the DATA CENTER better at cashing out, so each pair lives on its own pad
--- (see ShopUI.client.lua). `title` is what that pad's floating sign says.
--- `gpuSection = true` tells ShopUI to also build the GPU slot/catalog rows
--- on that platform -- this module doesn't need to know anything about GPUs
--- itself, just that its shop has room for them.
+-- The shop is THREE platforms -- Speed/Capacity make YOU better at
+-- collecting; GPUs and equipment slots (see GPUs.lua) make the DATA CENTER
+-- better at cashing out, split across their own two pads so neither panel
+-- has to cram both a catalog and a slot list into one scroll. Each entry
+-- lives on its own pad (see ShopUI.client.lua's SHOP_PAD_NAMES, in this
+-- same order). `title` is what that pad's floating sign says.
+-- `gpuCatalogSection`/`slotsSection` tell ShopUI to also build the GPU
+-- catalog rows, or the slot-unlock + per-slot rows, on that platform --
+-- this module doesn't need to know anything about GPUs itself, just that a
+-- shop has room for one of those sections.
 Upgrades.shops = {
-	{ title = "PLAYER SHOP",       ids = { "Speed", "Capacity" } },
-	{ title = "DATA CENTER SHOP",  ids = { "Efficiency" }, gpuSection = true },
+	{ title = "PLAYER SHOP", ids = { "Speed", "Capacity" } },
+	{ title = "GPU SHOP",    ids = {}, gpuCatalogSection = true },
+	{ title = "SLOTS SHOP",  ids = {}, slotsSection = true },
 }
 
 -- Every upgrade id, in canonical order -- derived from Upgrades.shops
@@ -67,16 +71,6 @@ Upgrades.defs = {
 		base = 5,        -- battery SLOTS at level 0, regardless of size
 		perLevel = 1,
 		unit = "",
-		baseCost = 50,
-		growth = 1.5,
-	},
-
-	Efficiency = {
-		name = "Power Conversion",   -- distinct from a GPU's own cash-per-mAh efficiency (see GPUs.lua)
-		base = 1,        -- multiplier on the reserve a dumped battery delivers, at level 0 (no bonus)
-		perLevel = 0.2,  -- +20% more usable reserve per level
-		unit = "x",
-		decimal = true,
 		baseCost = 50,
 		growth = 1.5,
 	},

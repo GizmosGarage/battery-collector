@@ -1786,3 +1786,53 @@ screenshotted the panel (title/Cash/first few rows visible, a scrollbar on
 the right, more rows implied below), then scrolled the mouse wheel down and
 screenshotted again to confirm every GPU catalog row down to the $100,000
 Data Center GPU is reachable. Stopped Play afterward.
+
+## 2026-09-12 — Removed Power Conversion; split the Data Center Shop into a GPU Shop and a Slots Shop
+
+**What changed:**
+1. Removed the Power Conversion (Efficiency) upgrade entirely. Dumping
+   batteries at the Data Center now banks mAh into the power reserve 1:1 --
+   no multiplier. `Upgrades.lua`'s `Efficiency` entry is gone, and
+   `DataCenter.server.lua` no longer reads an `EfficiencyLevel` attribute or
+   multiplies the dumped amount.
+2. Split what used to be one combined "Data Center Shop" (Efficiency +
+   GPU slot-unlock rows + GPU catalog rows, all in one scrolling panel)
+   into two separate shops, each on its own pad in Workspace:
+   - **GPU Shop** (`Workspace.Shop_GPUs`) -- just the GPU catalog: Buy a
+     card, or Equip a spare from storage.
+   - **Slots Shop** (`Workspace.Shop_Slots`, a new pad placed 22 studs over
+     from the old Data Center Shop's spot) -- unlock the next equipment
+     slot, and see/Unequip whatever's installed in each slot you have.
+   Both panels read the same rig attributes off the player, so buying a
+   GPU on one pad is reflected on the other the next time you walk onto it.
+
+**Why:** Ethan wants Power Conversion gone from the game, and wants GPUs
+and slots to be separate shops instead of one shop trying to do both.
+
+**Files:** `src/shared/Upgrades.lua`, `src/server/DataCenter.server.lua`,
+`src/server/Shop.server.lua` (comments only -- its purchase logic is
+generic over `Upgrades.defs`, so removing an upgrade needed no code
+change there), `src/client/ShopUI.client.lua`, `README.md`. World
+geometry: renamed `Workspace.Shop_DataCenter` to `Workspace.Shop_GPUs`
+(relabeled its sign) and cloned it to a new `Workspace.Shop_Slots` pad,
+both directly in the already-open Studio session (this lives in the
+.rbxl place file, not the repo).
+
+**Concept taught:** a good sign a module's job is too big is when one
+function name (`buildGPUSection`) is quietly doing two unrelated things
+(managing equipment slots, and running a shop catalog) -- splitting it
+into `buildSlotsSection` and `buildGPUCatalogSection`, each independently
+reading a shared `getRigState()` snapshot, made each piece small enough to
+reason about on its own, and let the UI (two panels) mirror the split
+instead of forcing one panel to represent two different jobs.
+
+**How tested:** live in the already-open Studio session (Roblox Studio
+MCP) -- started Play, teleported the character onto each of the four pads
+(Player Shop, GPU Shop, Slots Shop, Data Center) in turn and screenshotted
+each panel: Player Shop shows only Speed/Capacity (no Power Conversion),
+GPU Shop shows only the 5 catalog rows, Slots Shop shows only the
+unlock-row + 4 slot rows. Set the player's mAh to 500 and touched the Data
+Center pad -- confirmed via the Output window print (`"... dumped 500 mAh
+-- data center now holds 560 mAh"`) that the dump added exactly the dumped
+amount with no multiplier, and that `DataCenterSecondsLeft` updated with no
+errors. Stopped Play afterward.

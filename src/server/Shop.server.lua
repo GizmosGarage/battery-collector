@@ -2,7 +2,7 @@
 	Shop  --  Server Script, lives in ServerScriptService
 
 	Owns TWO kinds of purchase now:
-	  1. LEVEL upgrades (Speed, Capacity, Efficiency) -- one level per id in
+	  1. LEVEL upgrades (Speed, Capacity) -- one level per id in
 	     Upgrades.defs, published as "<id>Level" attributes. Unchanged from
 	     before the GPU system existed.
 	  2. GPU hardware (see GPUs.lua) -- a player has 1-4 EQUIPMENT SLOTS,
@@ -182,7 +182,7 @@ local function firstEmptySlot(rig)
 	return nil
 end
 
--- ---------- level upgrades (Speed, Capacity, Efficiency) ----------
+-- ---------- level upgrades (Speed, Capacity) ----------
 -- A purchase request from a client. `id` is whatever the client sent -- distrust it.
 buyEvent.OnServerEvent:Connect(function(player, id)
 	if not Upgrades.defs[id] then

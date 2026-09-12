@@ -2,16 +2,16 @@
 	DataCenter  --  Server Script, lives in ServerScriptService
 
 	The dump-off loop. Walk onto Workspace.DataCenter.Pad carrying battery
-	capacity and it all gets fed into the "AI data center" as a POWER RESERVE:
-	your mAh drops to 0, and that much (times your Efficiency upgrade) becomes
-	fuel in the tank.
+	capacity and it all gets fed into the "AI data center" as a POWER
+	RESERVE: your mAh drops to 0, and that much becomes fuel in the tank,
+	1 mAh in for 1 mAh of reserve -- no multiplier involved.
 
 	Every second the data center runs, it DRAWS power from that reserve --
 	the COMBINED power draw of every GPU installed in your equipment slots
 	(see GPUs.lua and Shop.server.lua) -- and pays out the COMBINED Cash/sec
 	of those same GPUs:
 
-		reserve added  = mAh dumped * Efficiency upgrade's multiplier
+		reserve added  = mAh dumped
 		power draw/sec = sum of installed GPUs' powerDraw
 		cash/sec       = sum of installed GPUs' cashPerSec
 
@@ -27,9 +27,9 @@
 	GPUs "brown out" independently; this first pass keeps the simpler
 	single-reserve-vs-single-draw model the game already had.)
 
-	Buying a bigger/second GPU pays more but drains the reserve faster.
-	Buying Efficiency makes every battery you dump deliver more reserve.
-	Those two pull against each other -- more GPUs is not a free upgrade.
+	Buying a bigger/second GPU pays more but drains the reserve faster --
+	that's the whole tradeoff now that dumping itself has no upgrade of
+	its own.
 
 	Dumping again while it's still running just adds more reserve.
 	Each player has their own independent run; the Pad is only the trigger.
@@ -46,7 +46,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 local PlayerData = require(script.Parent.PlayerData)
 
@@ -54,7 +53,7 @@ local PlayerData = require(script.Parent.PlayerData)
 local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 -- power draw is defined per second)
 local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for this long
 -- Cash/sec and power draw come from whichever GPUs a player has installed
--- (see rigTotals below); dump efficiency still comes from the Upgrades module.
+-- (see rigTotals below); dumping itself is a flat 1:1 mAh -> reserve conversion.
 -- ==============================================================
 
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
@@ -127,16 +126,12 @@ pad.Touched:Connect(function(hit)
 		carried.Value = 0
 	end
 
-	-- Efficiency upgrade: how much usable reserve each dumped mAh actually delivers.
-	local efficiency = Upgrades.effect("Efficiency", player:GetAttribute("EfficiencyLevel") or 0)
-	local addedReserve = math.floor(dumped * efficiency)
-
-	runs[player] = (runs[player] or 0) + addedReserve
+	runs[player] = (runs[player] or 0) + dumped
 	publish(player)
 
 	print(string.format(
-		"%s dumped %d mAh (x%.2f efficiency -> %d reserve) -- data center now holds %d mAh",
-		player.Name, dumped, efficiency, addedReserve, runs[player]
+		"%s dumped %d mAh -- data center now holds %d mAh",
+		player.Name, dumped, runs[player]
 	))
 end)
 

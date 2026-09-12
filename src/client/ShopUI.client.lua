@@ -1,35 +1,41 @@
 --[[
 	ShopUI  --  LocalScript, StarterPlayer > StarterPlayerScripts
 
-	The upgrade shop is TWO separate platforms (Upgrades.lua's
+	The upgrade shop is THREE separate platforms (Upgrades.lua's
 	`Upgrades.shops`), each with its own panel:
 
-		PLAYER SHOP       (Workspace.Shop_Player.Pad)      -- Speed, Capacity
-		DATA CENTER SHOP  (Workspace.Shop_DataCenter.Pad)  -- Efficiency,
-		                                                       plus GPU slots,
-		                                                       storage, and
-		                                                       the GPU
-		                                                       catalog (GPUs.lua)
+		PLAYER SHOP  (Workspace.Shop_Player.Pad)  -- Speed, Capacity
+		GPU SHOP     (Workspace.Shop_GPUs.Pad)    -- the GPU catalog (GPUs.lua):
+		                                              buy a card, or equip one
+		                                              you already own from storage
+		SLOTS SHOP   (Workspace.Shop_Slots.Pad)   -- unlock the next equipment
+		                                              slot, and see/unequip
+		                                              whatever's installed in
+		                                              each one you have
 
-	Walk onto either pad -- actually onto its footprint, not just near it --
+	Walk onto any pad -- actually onto its footprint, not just near it --
 	and THAT platform's panel appears; walk off and it hides. Standing on
-	one never shows the other.
+	one never shows another.
 
-	A shop's normal upgrade rows (Speed/Capacity/Efficiency) show the
-	current effect, the next-level effect, and the Cash cost. The Data
-	Center Shop ALSO gets a GPU section (any `shopDef.gpuSection == true`
-	does):
-	  - one row to unlock the next equipment slot
-	  - one row PER SLOT, showing what's installed there (or Locked/Empty)
-	    with an Unequip button
-	  - one row PER GPU TYPE in the catalog, showing how many you own
-	    (equipped + stored), with a Buy button (always available if you can
-	    afford it -- it auto-installs into an empty slot, or goes to
+	A shop's normal upgrade rows (Speed/Capacity) show the current effect,
+	the next-level effect, and the Cash cost. The GPU Shop and Slots Shop
+	each get ONE HALF of what used to be one combined GPU section, split so
+	neither panel has to cram both a catalog and a slot list into one
+	scroll (`shopDef.gpuCatalogSection` / `shopDef.slotsSection`):
+	  - Slots Shop: one row to unlock the next equipment slot, then one row
+	    PER SLOT, showing what's installed there (or Locked/Empty) with an
+	    Unequip button
+	  - GPU Shop: one row PER GPU TYPE in the catalog, showing how many you
+	    own (equipped + stored), with a Buy button (always available if you
+	    can afford it -- it auto-installs into an empty slot, or goes to
 	    storage if the rig's full) and an Equip button (moves a spare out
 	    of storage into an empty slot) that previews the resulting total
 	    Cash/sec right on the button
+	Both panels read the SAME rig attributes off LocalPlayer, so buying a
+	GPU on one pad shows up on the other the next time you walk onto it.
 	Equipping and unequipping are both FREE -- together they're how you
-	swap a worse card for a better one: unequip the old, equip the new.
+	swap a worse card for a better one: unequip the old (Slots Shop), equip
+	the new (GPU Shop).
 
 	Buying anything just fires a RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server publishes new attributes
@@ -68,10 +74,10 @@ local GPU_ROW_HEIGHT = 112   -- a catalog row: taller, has TWO buttons (Buy + Eq
 local GAP            = 10    -- vertical gap between every stacked item
 
 -- A panel never grows taller than this -- past it, the rows scroll instead.
--- The Data Center Shop's GPU section (unlock row + 4 slot rows + 5 catalog
--- rows, each 74-112px tall) adds up to way more than this, which is exactly
--- why it needs to scroll; the Player Shop's 2 rows never get close to the
--- cap, so its panel just stays its natural, shorter height.
+-- The GPU Shop's 5 catalog rows (each 112px, two buttons apiece) add up to
+-- way more than this, which is exactly why it needs to scroll; the Player
+-- Shop's 2 rows never get close to the cap, so its panel just stays its
+-- natural, shorter height.
 local MAX_PANEL_HEIGHT = 560
 
 -- title + gap + cash line -- the part of the panel that's always visible,
@@ -82,7 +88,7 @@ local TOP_BLOCK_HEIGHT = 22 + GAP + 16
 -- order as Upgrades.shops. World-geometry names live here, in the client
 -- script that actually needs them -- not in the shared Upgrades module,
 -- which only knows about upgrade ids and Cash math.
-local SHOP_PAD_NAMES = { "Shop_Player", "Shop_DataCenter" }
+local SHOP_PAD_NAMES = { "Shop_Player", "Shop_GPUs", "Shop_Slots" }
 -- ==============================================================
 
 -- A bare row Frame (background + rounded corners) with an info TextLabel
@@ -198,10 +204,56 @@ local function getCashValue()
 	return c and c.Value or 0
 end
 
--- Build the slot-unlock row, one row per SLOT, and one row per GPU TYPE in
--- the catalog. Returns a `refreshGPUs()` function that repaints all of
--- them from the player's current Cash, slots, and storage attributes.
-local function buildGPUSection(panel, startOrder)
+-- Everything both the Slots Shop and the GPU Shop need to repaint
+-- themselves, read once off LocalPlayer's attributes: current Cash, which
+-- slots are unlocked and what's installed in each, and how many of each
+-- GPU type are sitting in storage. Both panels show the SAME rig from two
+-- different angles, so this is one shared snapshot instead of two panels
+-- separately re-reading (and re-decoding the storage JSON) every refresh.
+local function getRigState()
+	local cash = getCashValue()
+	local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 1
+
+	-- Storage is a variable-length list, so it travels as a single
+	-- JSON-encoded string attribute instead of one attribute per item --
+	-- decode it back into a real table here.
+	local ok, storage = pcall(HttpService.JSONDecode, HttpService, LocalPlayer:GetAttribute("GPUStorageJSON") or "[]")
+	if not ok or type(storage) ~= "table" then
+		storage = {}
+	end
+
+	-- Read every unlocked slot's GPU id once, and total up the rig's
+	-- CURRENT combined Cash/sec -- this is what the GPU Shop's Equip
+	-- button preview shows the change FROM.
+	local slotGpuIds, totalCash, hasEmptySlot = {}, 0, false
+	for i = 1, unlocked do
+		local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
+		slotGpuIds[i] = (id ~= "" and id) or nil
+		if slotGpuIds[i] then
+			totalCash += GPUs.get(slotGpuIds[i]).cashPerSec
+		else
+			hasEmptySlot = true
+		end
+	end
+
+	local storedCounts = {}
+	for _, id in storage do
+		storedCounts[id] = (storedCounts[id] or 0) + 1
+	end
+
+	return {
+		cash = cash,
+		unlocked = unlocked,
+		slotGpuIds = slotGpuIds,
+		totalCash = totalCash,
+		hasEmptySlot = hasEmptySlot,
+		storedCounts = storedCounts,
+	}
+end
+
+-- SLOTS SHOP: the slot-unlock row, plus one row per SLOT. Returns a
+-- `refreshSlots()` function that repaints all of them.
+local function buildSlotsSection(panel, startOrder)
 	local slotUnlockRow = makeRowFrame(panel, startOrder, function()
 		buySlotEvent:FireServer()
 	end)
@@ -216,66 +268,30 @@ local function buildGPUSection(panel, startOrder)
 		end)
 	end
 
-	-- One row per GPU TYPE (not per GPU you own) -- owning three Basics
-	-- still shows one "Basic AI GPU" row, with an owned/equipped/stored
-	-- count in its text. This keeps the row count fixed at 5 no matter how
-	-- many duplicates a player stockpiles.
-	local gpuRows = {}
-	for i, gpu in GPUs.catalog do
-		gpuRows[gpu.id] = makeGPURow(panel, startOrder + GPUs.MAX_SLOTS + i, function()
-			buyGPUEvent:FireServer(gpu.id)
-		end, function()
-			equipGPUEvent:FireServer(gpu.id)
-		end)
-	end
-
-	local function refreshGPUs()
-		local cash = getCashValue()
-		local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 1
-
-		-- Storage is a variable-length list, so it travels as a single
-		-- JSON-encoded string attribute instead of one attribute per item
-		-- -- decode it back into a real table here.
-		local ok, storage = pcall(HttpService.JSONDecode, HttpService, LocalPlayer:GetAttribute("GPUStorageJSON") or "[]")
-		if not ok or type(storage) ~= "table" then
-			storage = {}
-		end
-
-		-- Read every unlocked slot's GPU id once, and total up the rig's
-		-- CURRENT combined Cash/sec -- this is what an Equip button's
-		-- preview (below) shows the change FROM.
-		local slotGpuIds, totalCash, hasEmptySlot = {}, 0, false
-		for i = 1, unlocked do
-			local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
-			slotGpuIds[i] = (id ~= "" and id) or nil
-			if slotGpuIds[i] then
-				totalCash += GPUs.get(slotGpuIds[i]).cashPerSec
-			else
-				hasEmptySlot = true
-			end
-		end
+	local function refreshSlots()
+		local state = getRigState()
 
 		-- ---- the "unlock next slot" row ----
-		slotUnlockRow.info.Text = string.format("GPU Slots: %d / %d unlocked", unlocked, GPUs.MAX_SLOTS)
-		local nextSlot = unlocked + 1
+		slotUnlockRow.info.Text = string.format("GPU Slots: %d / %d unlocked", state.unlocked, GPUs.MAX_SLOTS)
+		local nextSlot = state.unlocked + 1
 		if nextSlot > GPUs.MAX_SLOTS then
 			setButtonState(slotUnlockRow.buy, false, "All Slots Unlocked")
 		else
 			local price = GPUs.slotPrice(nextSlot)
-			setButtonState(slotUnlockRow.buy, cash >= price, "Unlock  $" .. price)
+			setButtonState(slotUnlockRow.buy, state.cash >= price, "Unlock  $" .. price)
 		end
 
 		-- ---- one row per slot: what's installed there, and Unequip it ----
 		for i = 1, GPUs.MAX_SLOTS do
 			local row = slotRows[i]
-			if i > unlocked then
+			if i > state.unlocked then
 				row.info.Text = string.format("Slot %d: Locked", i)
 				setButtonState(row.buy, false, "Locked")
-			elseif not slotGpuIds[i] then
+			elseif not state.slotGpuIds[i] then
 				row.info.Text = string.format("Slot %d: Empty", i)
 				setButtonState(row.buy, false, "Empty")
 			else
-				local gpu = GPUs.get(slotGpuIds[i])
+				local gpu = GPUs.get(state.slotGpuIds[i])
 				row.info.Text = string.format(
 					"Slot %d: %s\n%d Cash/sec, %d mAh/s power",
 					i, gpu.name, gpu.cashPerSec, gpu.powerDraw
@@ -283,22 +299,46 @@ local function buildGPUSection(panel, startOrder)
 				setButtonState(row.buy, true, "Unequip")   -- always free, so always "doable"
 			end
 		end
+	end
 
-		-- ---- one row per GPU type: buy another, or equip a spare ----
-		local storedCounts = {}
-		for _, id in storage do
-			storedCounts[id] = (storedCounts[id] or 0) + 1
-		end
+	-- Repaint whenever the rig's slots (unlocked count, or what's in each
+	-- one) change -- storage doesn't affect anything shown here.
+	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshSlots)
+	for i = 1, GPUs.MAX_SLOTS do
+		LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(refreshSlots)
+	end
+
+	return refreshSlots
+end
+
+-- GPU SHOP: one row per GPU TYPE in the catalog. Returns a
+-- `refreshCatalog()` function that repaints all of them.
+local function buildGPUCatalogSection(panel, startOrder)
+	-- One row per GPU TYPE (not per GPU you own) -- owning three Basics
+	-- still shows one "Basic AI GPU" row, with an owned/equipped/stored
+	-- count in its text. This keeps the row count fixed at 5 no matter how
+	-- many duplicates a player stockpiles.
+	local gpuRows = {}
+	for i, gpu in GPUs.catalog do
+		gpuRows[gpu.id] = makeGPURow(panel, startOrder + i - 1, function()
+			buyGPUEvent:FireServer(gpu.id)
+		end, function()
+			equipGPUEvent:FireServer(gpu.id)
+		end)
+	end
+
+	local function refreshCatalog()
+		local state = getRigState()
 
 		for _, gpu in GPUs.catalog do
 			local row = gpuRows[gpu.id]
 			local equippedCount = 0
-			for i = 1, unlocked do
-				if slotGpuIds[i] == gpu.id then
+			for i = 1, state.unlocked do
+				if state.slotGpuIds[i] == gpu.id then
 					equippedCount += 1
 				end
 			end
-			local storedCount = storedCounts[gpu.id] or 0
+			local storedCount = state.storedCounts[gpu.id] or 0
 
 			row.info.Text = string.format(
 				"%s  $%d  (%d Cash/s, %d mAh/s)\nOwned %d -- %d equipped, %d stored",
@@ -306,11 +346,11 @@ local function buildGPUSection(panel, startOrder)
 				equippedCount + storedCount, equippedCount, storedCount
 			)
 
-			setButtonState(row.buy, cash >= gpu.price, "Buy  $" .. gpu.price)
+			setButtonState(row.buy, state.cash >= gpu.price, "Buy  $" .. gpu.price)
 
 			if storedCount == 0 then
 				setButtonState(row.equip, false, "None Stored")
-			elseif not hasEmptySlot then
+			elseif not state.hasEmptySlot then
 				setButtonState(row.equip, false, "No Empty Slot")
 			else
 				-- The preview: exactly what "show how total Cash/sec would
@@ -318,37 +358,41 @@ local function buildGPUSection(panel, startOrder)
 				-- and after, so equipping is never a guess.
 				setButtonState(
 					row.equip, true,
-					string.format("Equip (%d->%d/s)", totalCash, totalCash + gpu.cashPerSec)
+					string.format("Equip (%d->%d/s)", state.totalCash, state.totalCash + gpu.cashPerSec)
 				)
 			end
 		end
 	end
 
-	-- Repaint whenever the rig OR storage changes.
-	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshGPUs)
-	LocalPlayer:GetAttributeChangedSignal("GPUStorageJSON"):Connect(refreshGPUs)
+	-- Repaint whenever the rig OR storage changes -- a catalog row's Equip
+	-- button depends on ALL of these (empty-slot availability, the Cash/sec
+	-- preview, and how many of this type are stored).
+	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshCatalog)
+	LocalPlayer:GetAttributeChangedSignal("GPUStorageJSON"):Connect(refreshCatalog)
 	for i = 1, GPUs.MAX_SLOTS do
-		LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(refreshGPUs)
+		LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(refreshCatalog)
 	end
 
-	return refreshGPUs
+	return refreshCatalog
 end
 
 -- Every row height a shop's panel will build, in order -- used by
 -- buildShopPanel to work out how tall the scrollable row area's content
 -- naturally is, so a short shop (few rows) stays compact and a long one
--- (like the Data Center Shop's GPU section) knows how far it needs to
--- scroll instead of being cut off.
+-- (like the GPU Shop's catalog) knows how far it needs to scroll instead
+-- of being cut off.
 local function planRowHeights(shopDef)
 	local heights = {}
 	for _ in shopDef.ids do
 		table.insert(heights, ROW_HEIGHT)
 	end
-	if shopDef.gpuSection then
+	if shopDef.slotsSection then
 		table.insert(heights, ROW_HEIGHT)   -- the "unlock next slot" row
 		for _ = 1, GPUs.MAX_SLOTS do
 			table.insert(heights, ROW_HEIGHT)
 		end
+	end
+	if shopDef.gpuCatalogSection then
 		for _ in GPUs.catalog do
 			table.insert(heights, GPU_ROW_HEIGHT)
 		end
@@ -357,8 +401,9 @@ local function planRowHeights(shopDef)
 end
 
 -- Build ONE shop's whole panel -- its own ScreenGui, title, Cash line, one
--- row per id in `shopDef.ids`, and (if `shopDef.gpuSection`) the GPU
--- section above. Returns { screen, pad, refresh } for the show/hide loop.
+-- row per id in `shopDef.ids`, and (if `shopDef.slotsSection` or
+-- `shopDef.gpuCatalogSection`) that shop's half of the GPU system.
+-- Returns { screen, pad, refresh } for the show/hide loop.
 local function buildShopPanel(shopDef, padName)
 	local pad = workspace:WaitForChild(padName):WaitForChild("Pad")
 
@@ -446,11 +491,15 @@ local function buildShopPanel(shopDef, padName)
 		end)
 	end
 
-	-- The GPU section (slot-unlock row, per-slot rows, per-GPU-type rows)
-	-- goes after the normal upgrade rows, if this shop has one.
-	local refreshGPUs
-	if shopDef.gpuSection then
-		refreshGPUs = buildGPUSection(scrollFrame, #shopDef.ids + 1)
+	-- The slots section (slot-unlock row + per-slot rows) or the GPU
+	-- catalog section (one row per GPU type) goes after the normal upgrade
+	-- rows, if this shop has one -- never both; each lives on its own pad.
+	local refreshSlots, refreshCatalog
+	if shopDef.slotsSection then
+		refreshSlots = buildSlotsSection(scrollFrame, #shopDef.ids + 1)
+	end
+	if shopDef.gpuCatalogSection then
+		refreshCatalog = buildGPUCatalogSection(scrollFrame, #shopDef.ids + 1)
 	end
 
 	local function refresh()
@@ -468,8 +517,11 @@ local function buildShopPanel(shopDef, padName)
 			setButtonState(row.buy, cash >= cost, "Buy  $" .. cost)
 		end
 
-		if refreshGPUs then
-			refreshGPUs()
+		if refreshSlots then
+			refreshSlots()
+		end
+		if refreshCatalog then
+			refreshCatalog()
 		end
 	end
 

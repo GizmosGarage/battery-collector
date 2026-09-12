@@ -7,17 +7,19 @@ happens, so the "why" sticks, not just the "what."
 **The game so far:** walk a field collecting batteries (rarer sizes glow
 bigger and are worth more, but vanish faster if you don't rush them) →
 carrying capacity is limited, so you decide when to head back → dump your
-batteries at the AI Data Center, which converts them into a power reserve and
-burns through it every second to pay you Cash → spend Cash at the Player Shop
-(Speed, Capacity) to collect better, or at the Data Center Shop (Power
-Conversion, plus GPU hardware) to cash out better. Cash/sec isn't a level
-upgrade anymore — it's real GPUs: 1-4 equipment slots, each filled from a
-5-tier catalog where a better card pays more but also draws more power, so
+batteries at the AI Data Center, which banks every mAh you dump as a power
+reserve (1:1 — dumping has no upgrade of its own) and burns through it every
+second to pay you Cash → spend Cash at the Player Shop (Speed, Capacity) to
+collect better, or at the GPU Shop and Slots Shop to cash out better.
+Cash/sec isn't a level upgrade — it's real GPUs: 1-4 equipment slots (bought
+one at a time at the Slots Shop), each filled from a 5-tier catalog (bought
+at the GPU Shop) where a better card pays more but also draws more power, so
 racking up GPUs is a genuine tradeoff against your power reserve, not just
 "buy everything." Every GPU you buy is yours to keep — a full rig just
 means the new one waits in storage — and moving one between a slot and
-storage is free, so replacing a cheap card with a better one is unequip,
-then equip, any time. Progress now **persists across sessions**: Cash,
+storage is free, so replacing a cheap card with a better one is unequip (at
+the Slots Shop), then equip (at the GPU Shop), any time. Progress now
+**persists across sessions**: Cash,
 upgrade levels, the whole GPU rig (slots, storage), and the banked power
 reserve are all saved and restored — only whatever you're actively
 carrying resets when you rejoin. Reaching Yellow/Blue/Red also takes
@@ -74,9 +76,9 @@ Battery Collector/
 │   │   ├── BatteryCollision.client.lua   walk through batteries once you're full
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
 │   │   ├── FieldLockDisplay.client.lua   dims a locked field's Pad + sign, per-player
-│   │   └── ShopUI.client.lua             the two upgrade shop panels (built entirely in code)
+│   │   └── ShopUI.client.lua             the three upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
-│       ├── Upgrades.lua    single source of truth for the 3 level upgrades' costs/effects
+│       ├── Upgrades.lua    single source of truth for the 2 level upgrades' costs/effects
 │       ├── GPUs.lua        single source of truth for the GPU catalog + equipment slots
 │       └── Fields.lua      single source of truth for the 4 fields' names + battery spawn mix
 ├── Models/                 reference art (battery renders used to build the 3-D models)
@@ -123,12 +125,13 @@ specific things live *only* in the place file, not this repo:
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter` (Pad + floating sign) and the two shop platforms,
-  `Workspace.Shop_Player` (Speed, Capacity) and `Workspace.Shop_DataCenter`
-  (Power Conversion, plus the GPU slot/catalog section) -- each Pad + sign,
-  same as before the split; `Upgrades.lua`'s `Upgrades.shops` records which
-  LEVEL upgrades belong to which shop, and `GPUs.lua` owns the GPU catalog
-  and slot prices shown on the Data Center Shop
+- `Workspace.DataCenter` (Pad + floating sign) and the three shop platforms,
+  `Workspace.Shop_Player` (Speed, Capacity), `Workspace.Shop_GPUs` (the GPU
+  catalog -- buy/equip), and `Workspace.Shop_Slots` (unlock a slot, see
+  what's installed, unequip) -- each Pad + sign, same shape as the Data
+  Center's; `Upgrades.lua`'s `Upgrades.shops` records which LEVEL upgrades
+  (and which GPU section, if any) belong to which shop, and `GPUs.lua` owns
+  the GPU catalog and slot prices shown across the two GPU shops
 - The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
   only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
   D — this is the original single field, just recolored). Each is a `Model`
