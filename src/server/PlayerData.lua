@@ -75,8 +75,11 @@ local function defaultData()
 		cash = 0,
 		lifetimeCash = 0,                -- total Cash ever EARNED -- never decreases; gates field unlocks (see Fields.lua)
 		levels = {},                    -- upgrade id -> level (Shop.server.lua fills this in)
+		spaceTier = 1,                   -- index into GPUs.spaceTiers -- how big the data center is
 		unlockedSlots = 1,
-		slots = { "Starter", "", "", "" },  -- ALWAYS 4 entries, "" = empty -- see Shop.server.lua
+		slots = { "Starter", "", "", "" },  -- "" = empty; Shop.server.lua pads/reads this out to
+		                                     -- GPUs.MAX_SLOTS entries -- an index past what's saved
+		                                     -- here just reads back as nil, same as "" (see GPUs.lua)
 		storage = {},                    -- list of owned-but-unequipped GPU ids
 		reserve = 0,                     -- banked power (mAh) at the Data Center
 	}

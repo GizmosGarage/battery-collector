@@ -2,26 +2,32 @@
 	GPUs  --  ModuleScript, lives in ReplicatedStorage (shared)
 
 	The single source of truth for the GPU catalog (what a GPU costs, what
-	it pays, and how much power it draws) and for the equipment SLOTS a
-	player's data center run holds them in.
+	it pays, and how much power it draws), for the data center SPACE tiers
+	that cap how many equipment slots a player could ever have, and for the
+	flat price of an individual SLOT within whatever space they've got.
 
-	This REPLACES the old flat "Cash" upgrade (Upgrades.lua) with actual
-	hardware: instead of one number that goes up forever, a player has 1-4
-	GPU SLOTS and fills them with GPUs bought from this catalog. Slot 1 is
-	free and starts with a free Starter GPU already in it; slots 2-4 cost
-	Cash to unlock (see GPUs.SLOT_PRICES), and every GPU -- including extra
-	Starters -- costs its own `price` to buy.
+	Three separate purchases, three separate purposes (see the Data Center
+	Shop and GPU Shop in ShopUI.client.lua):
+	  1. SPACE (`GPUs.spaceTiers`) -- how big the building is. Buying a
+	     bigger space just raises the SLOT CEILING; it doesn't hand you any
+	     new slots by itself.
+	  2. SLOTS (`GPUs.SLOT_PRICE`) -- an installation point within whatever
+	     space you've got. Flat price per slot, capped by your current
+	     space tier's `maxSlots`. The very first slot is free (see
+	     Shop.server.lua's default rig) and starts with a free Starter GPU
+	     already in it.
+	  3. GPUs (`GPUs.catalog`) -- the hardware itself, bought from this
+	     catalog and installed into a slot you already own.
 
-	Each tier roughly DOUBLES the power draw of the one before it, but pays
-	slightly MORE than double the Cash/sec -- "one better card beats two of
-	the last one, by a little" -- so upgrading is a real gain without making
-	the card it replaces worthless. Both `server/DataCenter.server.lua` (the
-	payout math) and `server/Shop.server.lua` (purchases) `require` this, so
-	the numbers can never disagree.
-
-	NOTE: this is a first pass at the mechanic. Buying a GPU auto-installs
-	it into the next EMPTY slot; there's no swapping an installed GPU back
-	out or storing spares yet -- see CHANGELOG.md for what's deferred.
+	Each GPU tier roughly DOUBLES the power draw of the one before it, but
+	pays slightly MORE than double the Cash/sec -- "one better card beats
+	two of the last one, by a little" -- so upgrading is a real gain
+	without making the card it replaces worthless. The tradeoff space
+	buying opens up: fill more (cheap) slots with cheap GPUs, or spend more
+	on efficient GPUs that fit in the space you've already got. Both
+	`server/DataCenter.server.lua` (the payout math) and
+	`server/Shop.server.lua` (purchases) `require` this, so the numbers can
+	never disagree.
 --]]
 
 local GPUs = {}
@@ -54,15 +60,39 @@ end
 -- The id every player starts with, already installed in their one free slot.
 GPUs.STARTER_ID = "Starter"
 
--- How many equipment slots exist in total, and what unlocking EACH one
--- costs -- index 1 is slot 1's price (free; it's the one every player
--- starts with), index 2 is slot 2's price, and so on.
-GPUs.MAX_SLOTS = 4
-GPUs.SLOT_PRICES = { 0, 500, 10000, 100000 }
+-- Data center SPACE -- how big the building is, which is what caps how
+-- many equipment SLOTS could ever fit in it. Buying into a bigger tier
+-- only raises that ceiling; it doesn't hand you any new slots by itself
+-- (see GPUs.SLOT_PRICE below) -- so a player who wants more GPUs running
+-- has to buy both the room for a slot AND the slot itself. Ordered
+-- smallest/cheapest first -- index 1 (free) is what every player starts
+-- with, matching the 4-slot ceiling the game always had before space
+-- became its own purchase.
+GPUs.spaceTiers = {
+	{ name = "Starter Room",      maxSlots = 4,  price = 0 },
+	{ name = "Small Server Room", maxSlots = 8,  price = 5000 },
+	{ name = "Server Hall",       maxSlots = 16, price = 50000 },
+	{ name = "Data Center Floor", maxSlots = 32, price = 500000 },
+}
 
--- Cash price to unlock `slotNumber` (1..MAX_SLOTS). Slot 1 is always free.
-function GPUs.slotPrice(slotNumber)
-	return GPUs.SLOT_PRICES[slotNumber]
+-- The largest a data center could ever get -- the last tier's maxSlots.
+-- Nothing needs this as a per-player limit (a player's own CURRENT tier
+-- already caps how many slots THEY can buy -- see GPUs.maxSlotsForTier);
+-- it's the absolute ceiling scripts use to size things that have to cover
+-- every slot ANY player could ever have (e.g. how many "SlotNGPU"
+-- attributes to publish).
+GPUs.MAX_SLOTS = GPUs.spaceTiers[#GPUs.spaceTiers].maxSlots
+
+-- How many slots a given space tier (1..#GPUs.spaceTiers) has room for.
+function GPUs.maxSlotsForTier(tierIndex)
+	local tier = GPUs.spaceTiers[tierIndex]
+	return tier and tier.maxSlots
 end
+
+-- Cash price for ONE equipment slot -- flat, regardless of how many you
+-- already have (unlike space, which gets pricier per tier). The very
+-- first slot is free (see Shop.server.lua's default rig); every slot
+-- after that, up to your current space tier's maxSlots, costs this.
+GPUs.SLOT_PRICE = 100
 
 return GPUs

@@ -10,23 +10,28 @@ carrying capacity is limited, so you decide when to head back → dump your
 batteries at the AI Data Center, which banks every mAh you dump as a power
 reserve (1:1 — dumping has no upgrade of its own) and burns through it every
 second to pay you Cash → spend Cash at the Player Shop (Speed, Capacity) to
-collect better, or at the GPU Shop and Slots Shop to cash out better.
-Cash/sec isn't a level upgrade — it's real GPUs: 1-4 equipment slots (bought
-one at a time at the Slots Shop), each filled from a 5-tier catalog (bought
-at the GPU Shop) where a better card pays more but also draws more power, so
-racking up GPUs is a genuine tradeoff against your power reserve, not just
-"buy everything." Every GPU you buy is yours to keep — a full rig just
-means the new one waits in storage — and moving one between a slot and
-storage is free, so replacing a cheap card with a better one is unequip (at
-the Slots Shop), then equip (at the GPU Shop), any time. Progress now
-**persists across sessions**: Cash,
-upgrade levels, the whole GPU rig (slots, storage), and the banked power
-reserve are all saved and restored — only whatever you're actively
-carrying resets when you rejoin. Reaching Yellow/Blue/Red also takes
-**lifetime Cash earned** (never decreases, even as you spend) past that
-field's threshold — locked, a field's Pad shows dimmed grey with a sign
-explaining what's needed; batteries there still spawn normally, you just
-can't collect them yet.
+collect better, at the GPU Shop to cash out better, or at the Data Center
+Shop to make room for more GPUs. Three separate purchases, three separate
+purposes: **space** (Data Center Shop — Starter Room/Small Server
+Room/Server Hall/Data Center Floor, each pricier tier just raising how many
+GPU **slots** could ever fit), **slots** themselves (also the Data Center
+Shop — the first is free, every one after costs a flat $100, up to your
+current space's max), and the **GPUs** that actually go in those slots
+(GPU Shop — a 5-tier catalog where a better card pays more but also draws
+more power). Buying more space never hands you a slot, and a slot sits
+empty until you buy a GPU for it — so the real choice is filling more
+(cheap) slots with cheap GPUs, or spending more on efficient GPUs that fit
+in the space you've already got. Every GPU you buy is yours to keep — a
+full rig just means the new one waits in storage — and moving one between a
+slot and storage is free, so replacing a cheap card with a better one is
+unequip (at the Data Center Shop), then equip (at the GPU Shop), any time.
+Progress now **persists across sessions**: Cash, upgrade levels, the whole
+GPU rig (space tier, slots, storage), and the banked power reserve are all
+saved and restored — only whatever you're actively carrying resets when you
+rejoin. Reaching Yellow/Blue/Red also takes **lifetime Cash earned** (never
+decreases, even as you spend) past that field's threshold — locked, a
+field's Pad shows dimmed grey with a sign explaining what's needed;
+batteries there still spawn normally, you just can't collect them yet.
 
 ## Working agreement (read this first, human or AI)
 
@@ -79,7 +84,7 @@ Battery Collector/
 │   │   └── ShopUI.client.lua             the three upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    single source of truth for the 2 level upgrades' costs/effects
-│       ├── GPUs.lua        single source of truth for the GPU catalog + equipment slots
+│       ├── GPUs.lua        single source of truth for the GPU catalog, space tiers, and slot price
 │       └── Fields.lua      single source of truth for the 4 fields' names + battery spawn mix
 ├── Models/                 reference art (battery renders used to build the 3-D models)
 └── Prompts/                the AI prompts used to generate the model and image references
@@ -127,11 +132,12 @@ specific things live *only* in the place file, not this repo:
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
 - `Workspace.DataCenter` (Pad + floating sign) and the three shop platforms,
   `Workspace.Shop_Player` (Speed, Capacity), `Workspace.Shop_GPUs` (the GPU
-  catalog -- buy/equip), and `Workspace.Shop_Slots` (unlock a slot, see
-  what's installed, unequip) -- each Pad + sign, same shape as the Data
-  Center's; `Upgrades.lua`'s `Upgrades.shops` records which LEVEL upgrades
-  (and which GPU section, if any) belong to which shop, and `GPUs.lua` owns
-  the GPU catalog and slot prices shown across the two GPU shops
+  catalog -- buy/equip), and `Workspace.Shop_DataCenter` (expand the data
+  center's space, buy a slot, see what's installed, unequip) -- each Pad +
+  sign, same shape as the dump-off Data Center's; `Upgrades.lua`'s
+  `Upgrades.shops` records which LEVEL upgrades (and which GPU section, if
+  any) belong to which shop, and `GPUs.lua` owns the GPU catalog, the space
+  tiers, and the flat slot price shown across the two GPU shops
 - The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
   only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
   D — this is the original single field, just recolored). Each is a `Model`

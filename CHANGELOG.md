@@ -1836,3 +1836,65 @@ Center pad -- confirmed via the Output window print (`"... dumped 500 mAh
 -- data center now holds 560 mAh"`) that the dump added exactly the dumped
 amount with no multiplier, and that `DataCenterSecondsLeft` updated with no
 errors. Stopped Play afterward.
+
+## 2026-09-12 — Data center space, GPU slots, and GPUs are now three separate purchases
+
+**What changed:** the Slots Shop is now the **Data Center Shop**, and it
+owns a whole new purchase on top of what it already did:
+- **Data center SPACE** (`GPUs.spaceTiers`) -- Starter Room (4 slots, free)
+  -> Small Server Room (8 slots, $5,000) -> Server Hall (16 slots, $50,000)
+  -> Data Center Floor (32 slots, $500,000). Buying into a bigger tier only
+  raises the SLOT CEILING -- it never hands you a slot by itself.
+- **GPU slots** (`GPUs.SLOT_PRICE`) -- a flat $100 each (first one's still
+  free), capped by whatever the current space tier allows. The old
+  per-slot pricing ({0, 500, 10000, 100000}) is gone.
+- **GPUs themselves** (`GPUs.catalog`) -- unchanged, still bought at the
+  GPU Shop.
+
+The Data Center Shop's panel now shows a "Data Center Space: <tier> (N
+slots max)" row with an Expand button, an "Installed Slots: X / N" row
+with a Buy Slot button, then one row per slot actually installed (no more
+"Slot 3: Locked" placeholders -- a slot either exists or it doesn't). Since
+a space expansion can eventually allow up to 32 slots, those per-slot rows
+are now added/removed as you buy more instead of a fixed 1-4 array, and
+the whole panel resizes itself to fit -- reading Roblox's own
+`UIListLayout.AbsoluteContentSize` instead of a hand-computed row-height
+table, so it stays correct automatically as the row count changes.
+
+**Why:** Ethan wants three clearly separate purchases -- data center space,
+the individual slots within it, and the GPUs that go in them -- instead of
+space and slots being the same purchase. The real choice this opens up:
+fill more (cheap) slots with cheap GPUs, or spend more on efficient GPUs
+that fit in the space you've already got.
+
+**Files:** `src/shared/GPUs.lua` (space tiers, flat slot price),
+`src/server/PlayerData.lua` (new `spaceTier` save field),
+`src/server/Shop.server.lua` (new `BuyDataCenterSpace` RemoteEvent, slot
+pricing/cap now reads the player's current tier),
+`src/client/ShopUI.client.lua` (space + slot-summary rows, dynamic
+per-slot rows, reactive panel sizing), `src/shared/Upgrades.lua` (shop
+title), `README.md`. World geometry: renamed
+`Workspace.Shop_Slots` to `Workspace.Shop_DataCenter` and its sign to
+"DATA CENTER SHOP", directly in the already-open Studio session (this
+lives in the .rbxl place file, not the repo).
+
+**Concept taught:** a `UIListLayout`'s `AbsoluteContentSize` property is
+Roblox measuring "how tall did my children actually end up" for you --
+reading that instead of re-deriving the same number by hand (adding up
+row heights and gaps in a separate function) means the code can't drift
+out of sync with what's actually on screen, and it keeps working even when
+the row COUNT itself changes during play, which a hand-computed one-time
+calculation never could.
+
+**How tested:** live in the already-open Studio session (Roblox Studio
+MCP) -- started Play, teleported onto the Data Center Shop pad, and
+confirmed the panel showed "Data Center Space: Starter Room (4 slots
+max)" / "Installed Slots: 2 / 4" with no locked-slot placeholders. Fired
+`BuyGPUSlot` from the client datamodel twice (Cash bumped first) and
+watched a new "Slot 3: Empty" row appear and the panel grow to fit it;
+fired it a third time at 4/4 and confirmed it was refused (button read
+"Space Full", `UnlockedSlots` stayed at 4). Fired `BuyDataCenterSpace`,
+confirmed the tier became "Small Server Room (8 slots max)" and the Buy
+Slot button re-enabled. Checked the Output log for the new purchase
+messages and no errors, then re-checked the GPU Shop and Player Shop
+panels were unaffected. Stopped Play afterward.
