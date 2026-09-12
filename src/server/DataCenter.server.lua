@@ -29,6 +29,12 @@
 	Dumping again while it's still running just adds more reserve.
 	Each player has their own independent run; the Pad is only the trigger.
 
+	The reserve now PERSISTS (see PlayerData.lua) -- rejoin and the data
+	center picks up with exactly as much banked power as you left with,
+	and the payout loop above just starts drawing from it again the next
+	tick. Nothing is simulated for the time you were away (no offline
+	draining, no offline earnings) -- that's a separate decision for later.
+
 	Note: the DataCenter model lives in the .rbxl place file, not in this repo.
 --]]
 
@@ -37,6 +43,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
+local PlayerData = require(script.Parent.PlayerData)
 
 -- ============================ CONFIG ============================
 local PAYOUT_INTERVAL = 1   -- seconds between payouts (keep at 1 -- power draw is defined per second)
@@ -128,10 +135,16 @@ pad.Touched:Connect(function(hit)
 	))
 end)
 
--- Clean up state when someone leaves.
-Players.PlayerRemoving:Connect(function(player)
+-- Runs AFTER this player's final save (see PlayerData.onReleased for why
+-- that order matters -- our own saver, below, reads `runs[player]`).
+PlayerData.onReleased(function(player)
 	runs[player] = nil
 	lastDump[player] = nil
+end)
+
+-- Contribute the banked reserve to every save.
+PlayerData.registerSaver(function(player, data)
+	data.reserve = runs[player] or 0
 end)
 
 -- The payout loop: once a second, every player with any banked reserve tries to
@@ -157,8 +170,15 @@ task.spawn(function()
 	end
 end)
 
--- Make sure every player has the attribute from the start (0 = OFFLINE).
-Players.PlayerAdded:Connect(publish)
-for _, player in Players:GetPlayers() do
+-- Restore this player's banked reserve (0 for a brand-new player) and
+-- publish the attribute from the start (0 = OFFLINE if the reserve's empty).
+local function setupPlayer(player)
+	local data = PlayerData.load(player)
+	runs[player] = data.reserve or 0
 	publish(player)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+for _, player in Players:GetPlayers() do
+	setupPlayer(player)
 end

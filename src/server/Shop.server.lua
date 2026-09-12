@@ -29,6 +29,13 @@
 	The client shows the shop UI and clicks a button; that fires one of
 	FOUR RemoteEvents to here. The SERVER decides whether any purchase or
 	rearrangement is allowed -- never the client.
+
+	Levels and the whole rig now PERSIST (see PlayerData.lua): a new player
+	starts from the same defaults as before, but a returning one picks up
+	exactly where they left off. Slots save as a 4-entry array ("" = empty)
+	and storage as a plain list of ids -- not the sparse `gpus` table this
+	script uses live -- because DataStores handle a plain array far more
+	predictably than a table with gaps in its numeric keys.
 --]]
 
 local Players = game:GetService("Players")
@@ -37,6 +44,7 @@ local HttpService = game:GetService("HttpService")
 
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
+local PlayerData = require(script.Parent.PlayerData)
 
 -- The channels the client uses to ask for a purchase or rearrangement.
 local buyEvent = Instance.new("RemoteEvent")
@@ -91,16 +99,37 @@ local function publishRig(player)
 end
 
 local function setupPlayer(player)
+	local data = PlayerData.load(player)   -- a fresh player's save (all defaults) or a returning one's
+
+	-- Levels: start every upgrade at its SAVED level, or 0 for one that
+	-- doesn't exist yet in an older save (e.g. a brand-new upgrade added
+	-- since this player last played).
 	local lv = {}
 	for id in Upgrades.defs do
-		lv[id] = 0
+		lv[id] = data.levels[id] or 0
 	end
 	levels[player] = lv
 	publishLevels(player)
 
-	-- Slot 1 is free and comes with a free Starter GPU already installed --
-	-- this is the ONLY GPU anyone gets without paying its catalog price.
-	rigs[player] = { unlockedSlots = 1, gpus = { [1] = GPUs.STARTER_ID }, storage = {} }
+	-- Rig: rebuild the live sparse `gpus` table from the saved 4-entry
+	-- array, skipping "" (empty) and any id the catalog no longer
+	-- recognizes (defensive, in case a GPU is ever removed from GPUs.lua).
+	local gpus = {}
+	for i = 1, GPUs.MAX_SLOTS do
+		local id = data.slots[i]
+		if id and id ~= "" and GPUs.get(id) then
+			gpus[i] = id
+		end
+	end
+
+	local storage = {}
+	for _, id in data.storage do
+		if GPUs.get(id) then
+			table.insert(storage, id)
+		end
+	end
+
+	rigs[player] = { unlockedSlots = data.unlockedSlots or 1, gpus = gpus, storage = storage }
 	publishRig(player)
 end
 
@@ -108,9 +137,33 @@ Players.PlayerAdded:Connect(setupPlayer)
 for _, player in Players:GetPlayers() do
 	setupPlayer(player)
 end
-Players.PlayerRemoving:Connect(function(player)
+
+-- Runs AFTER this player's final save (see PlayerData.onReleased for why
+-- that order matters) -- just forgetting our own tables now, nothing left
+-- to write anywhere.
+PlayerData.onReleased(function(player)
 	levels[player] = nil
 	rigs[player] = nil
+end)
+
+-- Contribute levels + the whole rig to every save (PlayerData.lua calls
+-- this right before writing to the DataStore).
+PlayerData.registerSaver(function(player, data)
+	local lv = levels[player]
+	if lv then
+		data.levels = table.clone(lv)
+	end
+
+	local rig = rigs[player]
+	if rig then
+		data.unlockedSlots = rig.unlockedSlots
+		local slots = { "", "", "", "" }
+		for i = 1, GPUs.MAX_SLOTS do
+			slots[i] = rig.gpus[i] or ""
+		end
+		data.slots = slots
+		data.storage = table.clone(rig.storage)
+	end
 end)
 
 local function getCash(player)

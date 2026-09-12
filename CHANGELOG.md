@@ -10,6 +10,100 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — Progress now saves: Cash, levels, GPU rig, and power reserve
+
+**Goal:** priority #2 on the recommended roadmap. Every stat reset to zero
+the moment you rejoined -- fine for a single sitting, but it made the whole
+"reach Blue, then Red" progression (and the new GPU economy) pointless
+across multiple sessions. Cash, upgrade levels, unlocked slots, owned/
+equipped GPUs, and the banked power reserve now survive leaving and
+rejoining. Batteries/mAh currently CARRIED still reset each session, same
+as always -- an in-progress collecting trip was never meant to be "progress."
+Offline earnings (whether the data center keeps draining/paying while
+you're away) is an explicitly separate decision, not attempted here -- the
+reserve just resumes exactly where it was the instant you're back.
+
+### [PlayerData.lua](src/server/PlayerData.lua) — new, the only script that talks to DataStores
+- One `DataStore("PlayerSave_v1")`, keyed per player by `Player_<UserId>`.
+- `PlayerData.load(player)` fetches (or, for a new player / a failed
+  fetch, DEFAULTS) a save table and caches it -- safe to call from more
+  than one script's `PlayerAdded` handler; a second caller just waits for
+  the first's in-flight request instead of firing a duplicate one.
+- `PlayerData.registerSaver(fn)` lets each system (PlayerSetup, Shop,
+  DataCenter) contribute its own slice of the save table right before a
+  save actually happens, without PlayerData needing to know what Cash,
+  levels, or a GPU rig even ARE -- the same "every plugin implements one
+  method" shape a plain interface would have in a language with real
+  interfaces.
+- Saves happen on a 120-second timer, when a player leaves, and once more
+  in `game:BindToClose` (server shutdown) -- never after every single
+  purchase, which would blow through DataStore's request-rate limits fast.
+- Every DataStore call is wrapped in `pcall` -- a failed load falls back to
+  fresh defaults (a Studio playtest with API access off still plays
+  normally, just without persistence); a failed save just warns and moves
+  on, rather than erroring the whole server.
+- `PlayerData.onReleased(fn)` -- see below; this is the piece that took
+  the most thought.
+
+### The ordering bug this design avoids
+The three systems that own live per-player state (Shop's `levels`/`rigs`,
+DataCenter's `runs`) already had their own `Players.PlayerRemoving`
+cleanup, nulling their tables when someone left. Naively, PlayerData's own
+save-on-leave would ALSO be a `Players.PlayerRemoving` connection -- and
+Roblox does not guarantee which of two connections to the same event fires
+first. If a system's cleanup happened to run BEFORE PlayerData's save got
+its turn, that system's registered saver would read an already-nulled
+table and silently save incomplete (or crash reading nil) data -- losing
+whatever changed in a player's last moments online, unpredictably, based
+on script load order alone.
+
+Fix: PlayerData owns the ONE `Players.PlayerRemoving` connection that
+matters for saving, and does save -> release -> `onReleased` callbacks in
+that exact order, every time, inside a single handler. Shop.server.lua and
+DataCenter.server.lua no longer connect to `Players.PlayerRemoving`
+directly at all -- they register their cleanup via `PlayerData.onReleased`
+instead, which is guaranteed to run only after their data was already
+captured into the save.
+
+### [PlayerSetup.server.lua](src/server/PlayerSetup.server.lua), [Shop.server.lua](src/server/Shop.server.lua), [DataCenter.server.lua](src/server/DataCenter.server.lua)
+- Each now calls `PlayerData.load(player)` at the top of its own
+  `setupPlayer`, and initializes its live state (leaderstats.Cash,
+  `levels`, the `rigs` table, `runs`) from the loaded data instead of
+  always starting at defaults.
+- Each registers ONE saver contributing its own fields, and (Shop and
+  DataCenter) one `onReleased` cleanup callback in place of their old
+  `Players.PlayerRemoving` connections.
+- Shop's rig saves as a plain 4-entry array (`data.slots`, `"" `= empty)
+  and a plain list (`data.storage`) -- NOT the sparse `gpus` table it uses
+  live -- because DataStores handle a plain array far more predictably
+  than a table with gaps in its numeric keys. Loading rebuilds the sparse
+  table from the array, skipping any id the catalog no longer recognizes
+  (defensive, in case a GPU is ever removed from `GPUs.lua` later).
+
+**Concept:** a plugin-style registration pattern (`registerSaver`,
+`onReleased`) instead of one big script that knows about Cash AND levels
+AND GPUs AND the reserve all at once -- each system stays responsible for
+its own slice, and the orchestrator (PlayerData) just calls whoever signed
+up, in a guaranteed order. This is also why the earlier "ordering bug"
+section matters as a lesson on its own: TWO listeners on the SAME event,
+in DIFFERENT scripts, have no guaranteed relative order in Roblox --
+anywhere that matters, funnel through one connection instead of two.
+
+**Tested:** Play mode, with Studio's "Enable Studio Access to API Services"
+left OFF on purpose (the default) to specifically verify the failure path:
+confirmed `PlayerData.load` catches the resulting 502 and falls back to
+correct defaults (`UnlockedSlots=1`, `Slot1GPU="Starter"`, `Cash=0`, empty
+storage) with no crash. Bought an upgrade and confirmed normal gameplay is
+completely unaffected by persistence being unavailable. Manually called
+`PlayerData.save` and confirmed the matching 403 is caught and warned, not
+thrown. Stopped Play mode (firing `PlayerRemoving` and `BindToClose`) and
+confirmed both the leave-triggered save and the shutdown save each failed
+gracefully with a warning and no server error. Real load/save ROUND-TRIP
+(does data survive a real rejoin) still needs "Enable Studio Access to API
+Services" turned on to verify -- noted in the README's Requirements.
+
+---
+
 ## 2026-09-12 — GPU storage and swapping: buying never gets stuck again
 
 **Goal:** the GPU system's biggest gap -- once every slot was full, buying

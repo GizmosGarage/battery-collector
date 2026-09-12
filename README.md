@@ -17,7 +17,10 @@ racking up GPUs is a genuine tradeoff against your power reserve, not just
 "buy everything." Every GPU you buy is yours to keep — a full rig just
 means the new one waits in storage — and moving one between a slot and
 storage is free, so replacing a cheap card with a better one is unequip,
-then equip, any time.
+then equip, any time. Progress now **persists across sessions**: Cash,
+upgrade levels, the whole GPU rig (slots, storage), and the banked power
+reserve are all saved and restored — only whatever you're actively
+carrying resets when you rejoin.
 
 ## Working agreement (read this first, human or AI)
 
@@ -55,6 +58,7 @@ Battery Collector/
 ├── CHANGELOG.md            Ethan's devlog — APPEND after every change, don't read it to get oriented
 ├── src/                    the live source code — edit these files
 │   ├── server/             → ServerScriptService
+│   │   ├── PlayerData.lua              saves/loads progress (DataStores) -- see its own header comment
 │   │   ├── PlayerSetup.server.lua      gives each player their leaderstats (Batteries, mAh, Cash)
 │   │   ├── BatterySpawner.server.lua   spawns/despawns batteries, handles collection + carry cap
 │   │   ├── PlayerSpeed.server.lua      applies the Speed upgrade to walk speed
@@ -137,3 +141,10 @@ generated, as a starting point).
 - [Rojo](https://rojo.space) 7.7.0 (CLI + Roblox Studio plugin + VS Code extension) — only needed for workflow A
 - Git
 - Roblox Studio
+- To actually test saving/loading progress **in Studio**: Game Settings →
+  Security → **Enable Studio Access to API Services**. Off by default: with
+  it off, `PlayerData.lua`'s DataStore calls fail (loudly, in the Output
+  window) and the game falls back to fresh, unsaved defaults every time --
+  intentional, so a Studio playtest never just breaks, but progress won't
+  actually persist between Play sessions until this is turned on. Nothing
+  extra is needed once the game is published — DataStores just work there.
