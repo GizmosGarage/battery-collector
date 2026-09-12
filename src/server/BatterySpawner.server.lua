@@ -44,6 +44,13 @@
 	-- only HOW OFTEN each size turns up (or whether it can appear at all)
 	does, per Fields.lua's `chances`.
 
+	A field can also be LOCKED (Fields.lua's `unlockCash`, checked against a
+	player's own LifetimeCash leaderstat): batteries still spawn there
+	completely normally, but a locked field's Touched handler just refuses
+	to collect anything for a player who hasn't reached that field's
+	requirement yet -- see FieldLockDisplay.client.lua for the sign/dimmed
+	pad that tells them so.
+
 	The lean and spin are PURELY VISUAL and live in client LocalScripts
 	(StarterPlayer > StarterPlayerScripts), so no movement data is sent over the
 	network. The server's battery -- and its Hitbox -- stays upright and still,
@@ -166,6 +173,7 @@ local function buildField(def)
 		count = count,                                        -- the CAP -- this field never holds more than this many at once
 		minCount = math.ceil(count * MIN_POPULATION_RATIO),   -- the FLOOR -- this field never holds fewer than this many
 		liveCount = 0,                                         -- how many of this field's batteries exist RIGHT NOW
+		unlockCash = def.unlockCash or 0,                      -- LIFETIME Cash a player needs before they can collect here
 	}
 end
 
@@ -251,6 +259,13 @@ local function spawnBattery(field)
 		local carried = leaderstats and leaderstats:FindFirstChild("Batteries")
 		local mah = leaderstats and leaderstats:FindFirstChild("mAh")
 		if not carried or not mah then
+			return
+		end
+
+		-- Locked field -- this player hasn't earned enough LIFETIME Cash
+		-- yet to collect here. The battery stays put; nothing happens.
+		local lifetimeCash = leaderstats:FindFirstChild("LifetimeCash")
+		if (lifetimeCash and lifetimeCash.Value or 0) < field.unlockCash then
 			return
 		end
 

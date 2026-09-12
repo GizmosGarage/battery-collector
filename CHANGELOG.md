@@ -10,6 +10,105 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — Field unlock progression: LifetimeCash gates Yellow/Blue/Red
+
+**Goal:** priority #3 on the recommended roadmap. Nothing stopped a player
+from walking straight from Green to Red and collecting D batteries on day
+one -- there was no access restriction at all, so the whole point of
+"working up to a bigger field" had no teeth. Yellow, Blue, and Red are now
+PERMANENTLY gated behind a lifetime-Cash-earned threshold, roughly scaled
+to what buying into that tier's GPUs already costs:
+
+| Field | Requirement | ~ Matches |
+| --- | --: | --- |
+| Green | none | always open |
+| Yellow | $2,500 lifetime Cash | a Basic GPU + slot 2 ($2,000) |
+| Blue | $25,000 lifetime Cash | an Advanced GPU + slot 3 ($22,500) |
+| Red | $250,000 lifetime Cash | a Data Center GPU + slot 4 ($200,000) |
+
+Reaching a field now roughly lines up with being able to actually USE what
+it offers, tying field progression to GPU pacing like the roadmap asked.
+
+### New leaderstat: LifetimeCash
+- Total Cash ever EARNED -- unlike Cash, it never goes back down when you
+  spend on upgrades or GPUs, so an unlock is truly permanent, never
+  something a shopping spree could undo. [DataCenter.server.lua](src/server/DataCenter.server.lua)
+  bumps it by the exact same amount as every Cash payout.
+- Persists via [PlayerData.lua](src/server/PlayerData.lua) (added to
+  `defaultData()` and [PlayerSetup.server.lua](src/server/PlayerSetup.server.lua)'s
+  saver) alongside Cash.
+
+### [Fields.lua](src/shared/Fields.lua) — `unlockCash` per field, plus lookup helpers
+- Each field def gained `unlockCash` (0 for Green). Added `Fields.getDef(name)`
+  (look up one field's def without scanning `Fields.defs`) and
+  `Fields.isUnlockedFor(name, lifetimeCash)` for anything that wants a
+  yes/no answer.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua) — collection gated, spawning isn't
+- Batteries still spawn completely normally on a locked field -- the LOOT
+  is real and visible, you just can't pick it up yet, which is what makes
+  the field worth working toward instead of an empty grey square. The
+  Touched handler now checks the toucher's LifetimeCash against
+  `field.unlockCash` before doing anything else; below it, the touch is a
+  no-op -- the battery stays right where it was.
+- This is enforced PER PLAYER, not per field globally -- fields are shared
+  world objects that any number of players at different progress levels
+  might stand on at once, so "is this field unlocked" can only ever be a
+  question about the TOUCHER, never a single shared on/off switch for the
+  whole field.
+
+### [FieldLockDisplay.client.lua](src/client/FieldLockDisplay.client.lua) — new, the "why can't I collect" answer
+- For Yellow/Blue/Red (Green is skipped entirely -- no lock, no sign), caches
+  each Pad's real color once at startup, then every time LifetimeCash
+  changes: locked -> Pad dims to flat grey + 35% transparent, its floating
+  sign (cloned from the Data Center's Sign/Billboard/Title structure, new
+  world geometry) lights up with "LOCKED" and "Need $X lifetime Cash (have
+  $Y)"; unlocked -> Pad snaps back to its cached true color, sign turns off.
+- Same per-viewer trick `DataCenterDisplay.client.lua` already used for the
+  ONLINE glow: the Pad is one shared Workspace part, but a LocalScript
+  setting its Color only changes what THAT player sees -- someone who's
+  already unlocked Blue sees it in full color while a newer player
+  standing right next to them still sees it dimmed grey.
+
+### A real bug caught and fixed while building this: schema evolution
+Adding a NEW save field (`lifetimeCash`) to an already-shipped save format
+exposed a gap: `PlayerSetup.server.lua` did `cash.Value = data.lifetimeCash`
+with no fallback, and an EXISTING save (saved before this field existed)
+naturally doesn't have it -- `data.lifetimeCash` was `nil`, and assigning
+`nil` to an `IntValue.Value` throws. Fixed two ways: `PlayerSetup.server.lua`
+now falls back to `0` defensively (matching the `or 1`/`or 0` pattern
+already used elsewhere for exactly this reason), AND
+[PlayerData.lua](src/server/PlayerData.lua) gained `fillMissingDefaults`,
+which backfills any field present in `defaultData()` but missing from a
+freshly-LOADED save, so the NEXT field added later won't need this same
+fix repeated by hand.
+
+**Concept:** a save file's SHAPE is not fixed forever -- a real, live save
+made under an older version of the game will keep showing up after the
+game changes, and code that assumes every field it expects is always
+present will eventually crash on exactly the players who've played the
+longest. Treating "fields might be missing" as the normal case (one
+central backfill, not a scattered `or default` at every read site) is what
+makes adding save data later routine instead of risky.
+
+**Tested:** Play mode -- and, as a bonus, DataStore API access turned out
+to already be enabled for this place (confirmed live: `GetAsync` returned
+a REAL save from earlier testing, `{cash=420, reserve=12640, ...}`, missing
+`lifetimeCash` entirely -- exactly the old-save scenario `fillMissingDefaults`
+was built for). Confirmed it loaded without error, backfilled `lifetimeCash`
+to 0, and the payout loop resumed correctly from the restored reserve
+(watched both Cash and LifetimeCash climb by the identical amount over
+several real ticks). Verified all three locked fields' Pads read dimmed
+grey with correct per-field requirement text, Green untouched. Physically
+teleported the player onto a Yellow battery while locked -- confirmed
+`Batteries`/`mAh` didn't change and the battery wasn't destroyed. Set
+LifetimeCash to 3000 (past Yellow's $2500) and confirmed, live and
+per-player: Yellow's Pad snapped back to its real color, its sign
+disabled, Blue stayed locked, and a real touch on a Yellow battery now
+successfully collected it. No console errors.
+
+---
+
 ## 2026-09-12 — Progress now saves: Cash, levels, GPU rig, and power reserve
 
 **Goal:** priority #2 on the recommended roadmap. Every stat reset to zero

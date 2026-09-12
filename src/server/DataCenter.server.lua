@@ -15,6 +15,11 @@
 		power draw/sec = sum of installed GPUs' powerDraw
 		cash/sec       = sum of installed GPUs' cashPerSec
 
+	Every Cash payout also bumps LifetimeCash by the same amount --
+	leaderstats.Cash can go back DOWN (you spend it), but LifetimeCash never
+	does, which is exactly why it's what Fields.lua gates permanent field
+	unlocks on instead of your current balance.
+
 	This is all-or-nothing per second, same as before the GPU system: if the
 	reserve can cover the WHOLE rig's draw, every installed GPU pays out and
 	the reserve drains by the full total; if it can't, the whole rig idles
@@ -161,6 +166,13 @@ task.spawn(function()
 				local cash = getStat(player, "Cash")
 				if cash then
 					cash.Value += cashPerSec
+				end
+				-- LifetimeCash tracks the SAME payout but never decreases --
+				-- it's what permanently unlocks fields (see Fields.lua),
+				-- so spending Cash afterward can never lock one back up.
+				local lifetimeCash = getStat(player, "LifetimeCash")
+				if lifetimeCash then
+					lifetimeCash.Value += cashPerSec
 				end
 				runs[player] = reserve - powerDraw
 			end

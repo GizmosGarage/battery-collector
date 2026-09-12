@@ -16,7 +16,7 @@
 	     this player's save table (a fresh, default one for a new player, or
 	     whatever was saved last time) -- then applies whatever fields are
 	     ITS to apply (Shop reads .levels/.unlockedSlots/.slots/.storage;
-	     DataCenter reads .reserve; PlayerSetup reads .cash).
+	     DataCenter reads .reserve; PlayerSetup reads .cash/.lifetimeCash).
 	  2. Each system also calls `PlayerData.registerSaver(fn)` ONCE, at
 	     script startup -- `fn(player, data)` is that system's chance to
 	     write ITS current live values back into `data` right before a save
@@ -73,6 +73,7 @@ local releaseListeners = {}
 local function defaultData()
 	return {
 		cash = 0,
+		lifetimeCash = 0,                -- total Cash ever EARNED -- never decreases; gates field unlocks (see Fields.lua)
 		levels = {},                    -- upgrade id -> level (Shop.server.lua fills this in)
 		unlockedSlots = 1,
 		slots = { "Starter", "", "", "" },  -- ALWAYS 4 entries, "" = empty -- see Shop.server.lua
@@ -83,6 +84,21 @@ end
 
 local function keyFor(player)
 	return "Player_" .. player.UserId
+end
+
+-- Fill in any field `data` is MISSING (present in defaultData() but not in
+-- this particular table) -- the case that matters is an OLDER save, made
+-- before some field existed yet (like LifetimeCash, added after Cash/GPUs
+-- already shipped). Without this, a returning player's older save would
+-- hand every system a table missing a field it assumes is always there,
+-- crashing instead of just treating that one thing as brand-new.
+local function fillMissingDefaults(data)
+	for key, value in defaultData() do
+		if data[key] == nil then
+			data[key] = value
+		end
+	end
+	return data
 end
 
 -- Load (or create) `player`'s save table, and return the ONE table every
@@ -110,7 +126,7 @@ function PlayerData.load(player)
 	end)
 
 	if ok and saved then
-		cache[player] = saved
+		cache[player] = fillMissingDefaults(saved)
 	else
 		if not ok then
 			warn(("PlayerData: couldn't load %s's save (%s) -- starting fresh"):format(player.Name, tostring(saved)))

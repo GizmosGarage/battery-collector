@@ -8,8 +8,8 @@ local PlayerData = require(script.Parent.PlayerData)
 
 -- This function runs once for each player, the moment they join.
 local function setupPlayer(player)
-	-- Load (or create) this player's save -- Cash is the one leaderstat
-	-- that persists; see the registerSaver call below.
+	-- Load (or create) this player's save -- Cash and LifetimeCash are the
+	-- leaderstats that persist; see the registerSaver call below.
 	local data = PlayerData.load(player)
 
 	-- A container. The name MUST be exactly "leaderstats" for Roblox to notice it.
@@ -39,11 +39,20 @@ local function setupPlayer(player)
 
 	-- Cash: earned by dumping batteries at the AI data center (see DataCenter).
 	-- This one DOES persist -- start at whatever the save says (0 for a
-	-- brand-new player).
+	-- brand-new player, or an older save saved before some field existed).
 	local cash = Instance.new("IntValue")
 	cash.Name = "Cash"
-	cash.Value = data.cash
+	cash.Value = data.cash or 0
 	cash.Parent = leaderstats
+
+	-- LifetimeCash: total Cash ever EARNED -- unlike Cash, this NEVER goes
+	-- down when you spend, so it's what gates permanent field unlocks (see
+	-- Fields.lua's `unlockCash` and FieldLockDisplay.client.lua). DataCenter
+	-- bumps this every time it bumps Cash. Also persists.
+	local lifetimeCash = Instance.new("IntValue")
+	lifetimeCash.Name = "LifetimeCash"
+	lifetimeCash.Value = data.lifetimeCash or 0
+	lifetimeCash.Parent = leaderstats
 end
 
 -- Fire setupPlayer for everyone who joins from now on.
@@ -55,12 +64,19 @@ for _, player in Players:GetPlayers() do
 	setupPlayer(player)
 end
 
--- Contribute Cash to every save (PlayerData.lua calls this right before
--- writing to the DataStore).
+-- Contribute Cash + LifetimeCash to every save (PlayerData.lua calls this
+-- right before writing to the DataStore).
 PlayerData.registerSaver(function(player, data)
 	local leaderstats = player:FindFirstChild("leaderstats")
-	local cash = leaderstats and leaderstats:FindFirstChild("Cash")
+	if not leaderstats then
+		return
+	end
+	local cash = leaderstats:FindFirstChild("Cash")
 	if cash then
 		data.cash = cash.Value
+	end
+	local lifetimeCash = leaderstats:FindFirstChild("LifetimeCash")
+	if lifetimeCash then
+		data.lifetimeCash = lifetimeCash.Value
 	end
 end)

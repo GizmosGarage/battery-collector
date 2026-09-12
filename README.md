@@ -20,7 +20,11 @@ storage is free, so replacing a cheap card with a better one is unequip,
 then equip, any time. Progress now **persists across sessions**: Cash,
 upgrade levels, the whole GPU rig (slots, storage), and the banked power
 reserve are all saved and restored — only whatever you're actively
-carrying resets when you rejoin.
+carrying resets when you rejoin. Reaching Yellow/Blue/Red also takes
+**lifetime Cash earned** (never decreases, even as you spend) past that
+field's threshold — locked, a field's Pad shows dimmed grey with a sign
+explaining what's needed; batteries there still spawn normally, you just
+can't collect them yet.
 
 ## Working agreement (read this first, human or AI)
 
@@ -69,6 +73,7 @@ Battery Collector/
 │   │   ├── BatteryGlow.client.lua        rarity glow (bigger/brighter = rarer)
 │   │   ├── BatteryCollision.client.lua   walk through batteries once you're full
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
+│   │   ├── FieldLockDisplay.client.lua   dims a locked field's Pad + sign, per-player
 │   │   └── ShopUI.client.lua             the two upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    single source of truth for the 3 level upgrades' costs/effects
@@ -127,10 +132,13 @@ specific things live *only* in the place file, not this repo:
 - The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
   only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
   D — this is the original single field, just recolored). Each is a `Model`
-  with one `Pad` part; `Fields.lua` is the only place their NAMES and
-  allowed battery sizes are recorded, and `BatterySpawner.server.lua` reads
-  each Pad's live size/position, so resizing or moving one in Studio needs
-  no code change
+  with one `Pad` part; `Fields.lua` is the only place their NAMES, battery
+  spawn mix, and unlock requirement are recorded, and `BatterySpawner.server.lua`
+  reads each Pad's live size/position, so resizing or moving one in Studio
+  needs no code change. `Field_Yellow`/`Field_Blue`/`Field_Red` also each
+  have a `Sign` (Pad + floating sign, same shape as the Data Center's) that
+  `FieldLockDisplay.client.lua` dims/lights up per-player -- `Field_Green`
+  has no lock and no sign at all
 
 If the place file is ever lost, these have to be rebuilt by hand (the
 `Prompts/` and `Models/` folders document how the original battery look was
@@ -141,10 +149,11 @@ generated, as a starting point).
 - [Rojo](https://rojo.space) 7.7.0 (CLI + Roblox Studio plugin + VS Code extension) — only needed for workflow A
 - Git
 - Roblox Studio
-- To actually test saving/loading progress **in Studio**: Game Settings →
-  Security → **Enable Studio Access to API Services**. Off by default: with
-  it off, `PlayerData.lua`'s DataStore calls fail (loudly, in the Output
-  window) and the game falls back to fresh, unsaved defaults every time --
-  intentional, so a Studio playtest never just breaks, but progress won't
-  actually persist between Play sessions until this is turned on. Nothing
-  extra is needed once the game is published — DataStores just work there.
+- To test saving/loading progress **in Studio**: Game Settings → Security →
+  **Enable Studio Access to API Services** must be on (this place already
+  has it on, confirmed 2026-09-12 -- a Play session now genuinely saves and
+  reloads real progress). With it off, `PlayerData.lua`'s DataStore calls
+  fail (loudly, in the Output window) and the game falls back to fresh,
+  unsaved defaults every time instead -- intentional, so a Studio playtest
+  never just breaks, only stops persisting. Nothing extra is needed once
+  the game is published — DataStores just work there.
