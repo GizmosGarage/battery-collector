@@ -6,8 +6,9 @@
 
 		PLAYER SHOP       (Workspace.Shop_Player.Pad)      -- Speed, Capacity
 		DATA CENTER SHOP  (Workspace.Shop_DataCenter.Pad)  -- Efficiency,
-		                                                       plus GPU slots
-		                                                       and the GPU
+		                                                       plus GPU slots,
+		                                                       storage, and
+		                                                       the GPU
 		                                                       catalog (GPUs.lua)
 
 	Walk onto either pad -- actually onto its footprint, not just near it --
@@ -17,13 +18,22 @@
 	A shop's normal upgrade rows (Speed/Capacity/Efficiency) show the
 	current effect, the next-level effect, and the Cash cost. The Data
 	Center Shop ALSO gets a GPU section (any `shopDef.gpuSection == true`
-	does) -- one row to unlock the next equipment slot, and one row per GPU
-	in the catalog to buy it (auto-installed into the first empty slot;
-	there's no swap/storage UI yet, see GPUs.lua).
+	does):
+	  - one row to unlock the next equipment slot
+	  - one row PER SLOT, showing what's installed there (or Locked/Empty)
+	    with an Unequip button
+	  - one row PER GPU TYPE in the catalog, showing how many you own
+	    (equipped + stored), with a Buy button (always available if you can
+	    afford it -- it auto-installs into an empty slot, or goes to
+	    storage if the rig's full) and an Equip button (moves a spare out
+	    of storage into an empty slot) that previews the resulting total
+	    Cash/sec right on the button
+	Equipping and unequipping are both FREE -- together they're how you
+	swap a worse card for a better one: unequip the old, equip the new.
 
 	Buying anything just fires a RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server publishes new attributes
-	(a level, a slot, a GPU), the panel showing them refreshes.
+	(a level, a slot, a GPU, storage), the panel showing them refreshes.
 
 	The whole GUI is built here in code so it lives in the repo (StarterGui is
 	not part of the Rojo project).
@@ -32,12 +42,15 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 local buyEvent = ReplicatedStorage:WaitForChild("BuyUpgrade")
 local buySlotEvent = ReplicatedStorage:WaitForChild("BuyGPUSlot")
 local buyGPUEvent = ReplicatedStorage:WaitForChild("BuyGPU")
+local equipGPUEvent = ReplicatedStorage:WaitForChild("EquipGPU")
+local unequipGPUEvent = ReplicatedStorage:WaitForChild("UnequipGPU")
 
 local LocalPlayer = Players.LocalPlayer
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -50,6 +63,9 @@ local COLOR_BUY_NO    = Color3.fromRGB(70, 74, 84)
 local COLOR_TEXT      = Color3.fromRGB(235, 237, 242)
 local COLOR_TEXT_DIM  = Color3.fromRGB(160, 164, 174)
 
+local ROW_HEIGHT     = 74    -- a normal, single-button row
+local GPU_ROW_HEIGHT = 112   -- a catalog row: taller, has TWO buttons (Buy + Equip)
+
 -- Which Workspace pad each Upgrades.shops entry stands on, in the SAME
 -- order as Upgrades.shops. World-geometry names live here, in the client
 -- script that actually needs them -- not in the shared Upgrades module,
@@ -58,13 +74,14 @@ local SHOP_PAD_NAMES = { "Shop_Player", "Shop_DataCenter" }
 -- ==============================================================
 
 -- A bare row Frame (background + rounded corners) with an info TextLabel
--- and a Buy TextButton -- no data binding yet, just the shared look every
--- row (upgrade OR GPU OR slot) uses. `onBuy` fires when the button's
--- clicked; deciding whether that click should DO anything is the server's
--- job (Shop.server.lua), not this button's.
-local function makeRowFrame(panel, order, onBuy)
+-- and ONE Buy-style TextButton -- no data binding yet, just the shared
+-- look every single-button row (upgrade, slot-unlock, or per-slot
+-- Unequip) uses. `onClick` fires when the button's clicked; deciding
+-- whether that click should DO anything is the server's job
+-- (Shop.server.lua), not this button's.
+local function makeRowFrame(panel, order, onClick)
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, 74)
+	row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
 	row.BackgroundColor3 = COLOR_ROW
 	row.BorderSizePixel = 0
 	row.LayoutOrder = order
@@ -98,18 +115,69 @@ local function makeRowFrame(panel, order, onBuy)
 	buy.Parent = row
 	Instance.new("UICorner", buy).CornerRadius = UDim.new(0, 6)
 
-	buy.Activated:Connect(onBuy)
+	buy.Activated:Connect(onClick)
 
 	return { info = info, buy = buy }
 end
 
--- Set a row's Buy button to either the "can afford it" or "can't" look,
--- with whatever `buyText` it should show either way (a price, or a status
--- like "MAX" / "No Empty Slot" for a button that isn't just cost-gated).
-local function setBuyState(row, canBuy, buyText)
-	row.buy.Text = buyText
-	row.buy.BackgroundColor3 = canBuy and COLOR_BUY_OK or COLOR_BUY_NO
-	row.buy.AutoButtonColor = canBuy
+-- A row with TWO buttons stacked bottom-right (Buy above, Equip above
+-- that) -- used only for the GPU catalog, where one type needs both
+-- "buy another" and "equip a spare from storage" as separate actions.
+local function makeGPURow(panel, order, onBuy, onEquip)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, GPU_ROW_HEIGHT)
+	row.BackgroundColor3 = COLOR_ROW
+	row.BorderSizePixel = 0
+	row.LayoutOrder = order
+	row.Parent = panel
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local info = Instance.new("TextLabel")
+	info.BackgroundTransparency = 1
+	info.Position = UDim2.fromOffset(12, 8)
+	info.Size = UDim2.new(1, -24, 0, 60)
+	info.Font = Enum.Font.GothamMedium
+	info.TextSize = 14
+	info.TextColor3 = COLOR_TEXT
+	info.TextXAlignment = Enum.TextXAlignment.Left
+	info.TextYAlignment = Enum.TextYAlignment.Top
+	info.TextWrapped = true
+	info.Text = ""
+	info.Parent = row
+
+	local function makeButton(bottomOffset)
+		local b = Instance.new("TextButton")
+		b.AnchorPoint = Vector2.new(1, 1)
+		b.Position = UDim2.new(1, -12, 1, bottomOffset)
+		b.Size = UDim2.fromOffset(150, 26)
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 13
+		b.TextColor3 = COLOR_TEXT
+		b.BackgroundColor3 = COLOR_BUY_NO
+		b.BorderSizePixel = 0
+		b.AutoButtonColor = false
+		b.Text = "Buy"
+		b.Parent = row
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+		return b
+	end
+
+	local buy = makeButton(-10)
+	buy.Activated:Connect(onBuy)
+
+	local equip = makeButton(-42)
+	equip.Activated:Connect(onEquip)
+
+	return { info = info, buy = buy, equip = equip }
+end
+
+-- Set one button to either the "can do it" or "can't" look, with whatever
+-- `text` it should show either way (a price, or a status like "Locked" /
+-- "No Empty Slot" for a button that isn't just cost-gated).
+local function setButtonState(button, canDo, text)
+	button.Text = text
+	button.BackgroundColor3 = canDo and COLOR_BUY_OK or COLOR_BUY_NO
+	button.AutoButtonColor = canDo
 end
 
 local function getCashValue()
@@ -118,18 +186,34 @@ local function getCashValue()
 	return c and c.Value or 0
 end
 
--- Build the slot-unlock row + one row per GPU in the catalog. Returns a
--- `refreshGPUs()` function that repaints all of them from the player's
--- current Cash and rig attributes.
+-- Build the slot-unlock row, one row per SLOT, and one row per GPU TYPE in
+-- the catalog. Returns a `refreshGPUs()` function that repaints all of
+-- them from the player's current Cash, slots, and storage attributes.
 local function buildGPUSection(panel, startOrder)
-	local slotRow = makeRowFrame(panel, startOrder, function()
+	local slotUnlockRow = makeRowFrame(panel, startOrder, function()
 		buySlotEvent:FireServer()
 	end)
 
-	local gpuRows = {}   -- gpu id -> row
+	-- One row per possible slot (always all 4, regardless of how many are
+	-- unlocked yet) -- a fixed row count keeps the panel's height fixed
+	-- too; a locked slot's row just shows "Locked" instead of disappearing.
+	local slotRows = {}
+	for i = 1, GPUs.MAX_SLOTS do
+		slotRows[i] = makeRowFrame(panel, startOrder + i, function()
+			unequipGPUEvent:FireServer(i)
+		end)
+	end
+
+	-- One row per GPU TYPE (not per GPU you own) -- owning three Basics
+	-- still shows one "Basic AI GPU" row, with an owned/equipped/stored
+	-- count in its text. This keeps the row count fixed at 5 no matter how
+	-- many duplicates a player stockpiles.
+	local gpuRows = {}
 	for i, gpu in GPUs.catalog do
-		gpuRows[gpu.id] = makeRowFrame(panel, startOrder + i, function()
+		gpuRows[gpu.id] = makeGPURow(panel, startOrder + GPUs.MAX_SLOTS + i, function()
 			buyGPUEvent:FireServer(gpu.id)
+		end, function()
+			equipGPUEvent:FireServer(gpu.id)
 		end)
 	end
 
@@ -137,54 +221,126 @@ local function buildGPUSection(panel, startOrder)
 		local cash = getCashValue()
 		local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 1
 
-		-- Walk every unlocked slot once: note which GPUs are installed (by
-		-- name, for the status line) and whether anything's empty (every
-		-- GPU row's buy button depends on that).
-		local installedNames, hasEmptySlot = {}, false
+		-- Storage is a variable-length list, so it travels as a single
+		-- JSON-encoded string attribute instead of one attribute per item
+		-- -- decode it back into a real table here.
+		local ok, storage = pcall(HttpService.JSONDecode, HttpService, LocalPlayer:GetAttribute("GPUStorageJSON") or "[]")
+		if not ok or type(storage) ~= "table" then
+			storage = {}
+		end
+
+		-- Read every unlocked slot's GPU id once, and total up the rig's
+		-- CURRENT combined Cash/sec -- this is what an Equip button's
+		-- preview (below) shows the change FROM.
+		local slotGpuIds, totalCash, hasEmptySlot = {}, 0, false
 		for i = 1, unlocked do
 			local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
-			local gpu = id ~= "" and GPUs.get(id)
-			if gpu then
-				table.insert(installedNames, gpu.name)
+			slotGpuIds[i] = (id ~= "" and id) or nil
+			if slotGpuIds[i] then
+				totalCash += GPUs.get(slotGpuIds[i]).cashPerSec
 			else
 				hasEmptySlot = true
 			end
 		end
 
-		slotRow.info.Text = string.format(
-			"GPU Slots: %d / %d unlocked\nInstalled: %s",
-			unlocked, GPUs.MAX_SLOTS,
-			#installedNames > 0 and table.concat(installedNames, ", ") or "none"
-		)
+		-- ---- the "unlock next slot" row ----
+		slotUnlockRow.info.Text = string.format("GPU Slots: %d / %d unlocked", unlocked, GPUs.MAX_SLOTS)
 		local nextSlot = unlocked + 1
 		if nextSlot > GPUs.MAX_SLOTS then
-			setBuyState(slotRow, false, "All Slots Unlocked")
+			setButtonState(slotUnlockRow.buy, false, "All Slots Unlocked")
 		else
 			local price = GPUs.slotPrice(nextSlot)
-			setBuyState(slotRow, cash >= price, "Unlock  $" .. price)
+			setButtonState(slotUnlockRow.buy, cash >= price, "Unlock  $" .. price)
+		end
+
+		-- ---- one row per slot: what's installed there, and Unequip it ----
+		for i = 1, GPUs.MAX_SLOTS do
+			local row = slotRows[i]
+			if i > unlocked then
+				row.info.Text = string.format("Slot %d: Locked", i)
+				setButtonState(row.buy, false, "Locked")
+			elseif not slotGpuIds[i] then
+				row.info.Text = string.format("Slot %d: Empty", i)
+				setButtonState(row.buy, false, "Empty")
+			else
+				local gpu = GPUs.get(slotGpuIds[i])
+				row.info.Text = string.format(
+					"Slot %d: %s\n%d Cash/sec, %d mAh/s power",
+					i, gpu.name, gpu.cashPerSec, gpu.powerDraw
+				)
+				setButtonState(row.buy, true, "Unequip")   -- always free, so always "doable"
+			end
+		end
+
+		-- ---- one row per GPU type: buy another, or equip a spare ----
+		local storedCounts = {}
+		for _, id in storage do
+			storedCounts[id] = (storedCounts[id] or 0) + 1
 		end
 
 		for _, gpu in GPUs.catalog do
 			local row = gpuRows[gpu.id]
+			local equippedCount = 0
+			for i = 1, unlocked do
+				if slotGpuIds[i] == gpu.id then
+					equippedCount += 1
+				end
+			end
+			local storedCount = storedCounts[gpu.id] or 0
+
 			row.info.Text = string.format(
-				"%s  $%d\n%d Cash/sec, %d mAh/s power",
-				gpu.name, gpu.price, gpu.cashPerSec, gpu.powerDraw
+				"%s  $%d  (%d Cash/s, %d mAh/s)\nOwned %d -- %d equipped, %d stored",
+				gpu.name, gpu.price, gpu.cashPerSec, gpu.powerDraw,
+				equippedCount + storedCount, equippedCount, storedCount
 			)
-			if not hasEmptySlot then
-				setBuyState(row, false, "No Empty Slot")
+
+			setButtonState(row.buy, cash >= gpu.price, "Buy  $" .. gpu.price)
+
+			if storedCount == 0 then
+				setButtonState(row.equip, false, "None Stored")
+			elseif not hasEmptySlot then
+				setButtonState(row.equip, false, "No Empty Slot")
 			else
-				setBuyState(row, cash >= gpu.price, "Buy  $" .. gpu.price)
+				-- The preview: exactly what "show how total Cash/sec would
+				-- change" means here -- the button itself says the before
+				-- and after, so equipping is never a guess.
+				setButtonState(
+					row.equip, true,
+					string.format("Equip (%d->%d/s)", totalCash, totalCash + gpu.cashPerSec)
+				)
 			end
 		end
 	end
 
-	-- Repaint whenever the rig changes.
+	-- Repaint whenever the rig OR storage changes.
 	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshGPUs)
+	LocalPlayer:GetAttributeChangedSignal("GPUStorageJSON"):Connect(refreshGPUs)
 	for i = 1, GPUs.MAX_SLOTS do
 		LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(refreshGPUs)
 	end
 
 	return refreshGPUs
+end
+
+-- How tall a shop's panel needs to be, given exactly which rows it'll
+-- build -- computed from the SAME row heights buildShopPanel/buildGPUSection
+-- actually use, so the panel is never too short (clipping content) or
+-- needlessly tall.
+local function planRowHeights(shopDef)
+	local heights = {}
+	for _ in shopDef.ids do
+		table.insert(heights, ROW_HEIGHT)
+	end
+	if shopDef.gpuSection then
+		table.insert(heights, ROW_HEIGHT)   -- the "unlock next slot" row
+		for _ = 1, GPUs.MAX_SLOTS do
+			table.insert(heights, ROW_HEIGHT)
+		end
+		for _ in GPUs.catalog do
+			table.insert(heights, GPU_ROW_HEIGHT)
+		end
+	end
+	return heights
 end
 
 -- Build ONE shop's whole panel -- its own ScreenGui, title, Cash line, one
@@ -193,7 +349,13 @@ end
 local function buildShopPanel(shopDef, padName)
 	local pad = workspace:WaitForChild(padName):WaitForChild("Pad")
 
-	local rowCount = #shopDef.ids + (shopDef.gpuSection and (1 + #GPUs.catalog) or 0)
+	local rowHeights = planRowHeights(shopDef)
+	local rowsHeight = 0
+	for _, h in rowHeights do
+		rowsHeight += h
+	end
+	local itemCount = 2 + #rowHeights   -- title + cash line + every row
+	local gapsHeight = (itemCount - 1) * 10
 
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "ShopUI_" .. padName
@@ -205,10 +367,9 @@ local function buildShopPanel(shopDef, padName)
 	panel.Name = "Panel"
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
-	-- Tall enough for the title, Cash line, and one row per thing this shop
-	-- sells -- the same numbers the original single 4-upgrade panel used
-	-- (94 + 84*4 = 430), generalized to however many rows a shop has.
-	panel.Size = UDim2.fromOffset(400, 94 + 84 * rowCount)
+	-- title(22) + cashLine(16) + every row's own height + a 10px gap
+	-- between every pair of items + 14px padding top and bottom.
+	panel.Size = UDim2.fromOffset(400, 22 + 16 + rowsHeight + gapsHeight + 28)
 	panel.BackgroundColor3 = COLOR_BG
 	panel.BorderSizePixel = 0
 	panel.Parent = screen
@@ -250,8 +411,8 @@ local function buildShopPanel(shopDef, padName)
 		end)
 	end
 
-	-- The GPU section (slot-unlock row + one row per catalog GPU) goes
-	-- after the normal upgrade rows, if this shop has one.
+	-- The GPU section (slot-unlock row, per-slot rows, per-GPU-type rows)
+	-- goes after the normal upgrade rows, if this shop has one.
 	local refreshGPUs
 	if shopDef.gpuSection then
 		refreshGPUs = buildGPUSection(panel, 2 + #shopDef.ids + 1)
@@ -269,7 +430,7 @@ local function buildShopPanel(shopDef, padName)
 			local def = Upgrades.defs[id]
 
 			row.info.Text = string.format("%s  (lvl %d)\n%s  →  %s", def.name, level, now, nextt)
-			setBuyState(row, cash >= cost, "Buy  $" .. cost)
+			setButtonState(row.buy, cash >= cost, "Buy  $" .. cost)
 		end
 
 		if refreshGPUs then

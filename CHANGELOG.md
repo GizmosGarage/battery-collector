@@ -10,6 +10,88 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — GPU storage and swapping: buying never gets stuck again
+
+**Goal:** the GPU system's biggest gap -- once every slot was full, buying
+was flatly REFUSED, even with plenty of Cash, and there was no way to pull
+an installed GPU back out. Fill four slots with cheap Starters and you were
+locked out of the Advanced/Data Center/Neural tiers forever. This closes
+that gap: every GPU you buy is now yours to keep, and moving one between a
+slot and storage is free -- so upgrading is unequip the old, equip the new.
+
+### [Shop.server.lua](src/server/Shop.server.lua) — storage + two new RemoteEvents
+- Each player's rig gained a third field: `storage` -- a plain list of
+  owned-but-not-installed GPU ids (duplicates allowed; two owned Basics
+  with one equipped is a completely normal state).
+- `BuyGPU` no longer refuses a purchase when every slot is full -- it still
+  auto-installs into an empty slot if one exists, but now falls back to
+  `table.insert(rig.storage, ...)` instead of returning early. Buying only
+  ever fails for being unaffordable now, never for having a full rig.
+- Two new RemoteEvents: `UnequipGPU(slotNumber)` moves that slot's GPU into
+  storage and empties the slot; `EquipGPU(gpuId)` finds a matching id in
+  storage and moves it into the first empty slot. Both are FREE (no Cash
+  check) -- they're rearranging hardware already owned, not buying
+  anything. A "swap" is just these two calls back to back.
+- `storage` publishes as a NEW attribute, `GPUStorageJSON` --
+  `HttpService:JSONEncode`d, because an attribute can only hold one simple
+  value and storage's length varies. (`JSONEncode`/`JSONDecode` are pure
+  local functions -- no network access or the "Allow HTTP Requests" game
+  setting needed for these two, unlike `HttpService:GetAsync` etc.)
+
+### [ShopUI.client.lua](src/client/ShopUI.client.lua) — slot rows + a Buy/Equip catalog
+- The old single aggregated "Slots: X/4, Installed: ..." row is now FOUR
+  per-slot rows (always built, regardless of how many are unlocked) --
+  each shows Locked / Empty / "<GPU> + stats" and, when occupied, an
+  Unequip button.
+- Every catalog row now has TWO buttons: **Buy** (unchanged) and a new
+  **Equip** that reads "Equip (17->22/s)" -- the rig's CURRENT total
+  Cash/sec and what it would become, computed live, right on the button.
+  That's the "before equipping, show how the total would change" preview
+  -- always visible, not a hover tooltip, so it works the same on any
+  input device. The button instead reads "None Stored" or "No Empty Slot"
+  when equipping isn't currently possible.
+- New `makeGPURow` (two stacked buttons, taller) alongside the existing
+  `makeRowFrame` (one button) -- and `setBuyState` was generalized into
+  `setButtonState(button, canDo, text)`, since it now sets buttons
+  directly rather than assuming a row has exactly one.
+- Panel height is no longer a single magic formula -- `planRowHeights`
+  builds the actual list of row heights a shop will use (mixing the normal
+  74px rows with the new 112px two-button GPU rows) and sums them, so the
+  panel is sized exactly right instead of estimated.
+
+### Deferred (unchanged from before, still intentional)
+- **No persistence** -- a rig (slots, storage, everything) still resets on
+  rejoin. Saving progress is next on the recommended roadmap, not this pass.
+- **All-or-nothing power draw**, not per-GPU brownouts.
+- The Data Center Shop panel is now quite tall (5 GPU types at 112px plus
+  4 slot rows plus the unlock row) -- a scrollable or collapsible redesign
+  would be a good follow-up UI-polish pass, not attempted here.
+
+**Concept:** representing a variable-length list as a single JSON string
+inside one attribute, because Roblox attributes can only hold ONE simple
+value each (a number, a string, a color -- never an array or nested
+table) -- the same kind of constraint that pushed the four battery-field
+Pad names into a shared module instead of one attribute each, just solved
+differently here since the LENGTH itself varies, not just the count of
+named slots.
+
+**Tested:** Play mode, all real RemoteEvents (matching exactly what each
+button fires). Filled all 4 slots (Starter/Basic/Advanced/DataCenter), then
+bought a 5th GPU (another Basic) with the rig completely full -- it landed
+in storage (`GPUStorageJSON` -> `["Basic"]`) instead of being refused, and
+Cash dropped by exactly its price. Unequipped slot 2 -- slot emptied,
+storage grew to two Basics, and the Data Center's power-draw sign
+correctly dropped by exactly that GPU's draw (only counting EQUIPPED GPUs,
+confirmed by checking the sign read 520 mAh/s with slot 2 empty, matching
+Starter+Advanced+DataCenter by hand). Equipped a Basic back from storage --
+slot refilled, storage shrank back to one, sign rose to exactly 600 (+80).
+Confirmed the Equip button's preview text matched hand-calculated totals
+exactly in two different states (45->57 and 45->110). Read every row's
+actual `Text` off the live GUI and confirmed "Owned N -- E equipped, S
+stored" matched the real rig state precisely. No console errors.
+
+---
+
 ## 2026-09-12 — Each field gets its own battery mix, not a shared falloff
 
 **Goal:** every field picked from the SAME global rarity curve (falloff^3),

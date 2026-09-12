@@ -14,7 +14,10 @@ Conversion, plus GPU hardware) to cash out better. Cash/sec isn't a level
 upgrade anymore — it's real GPUs: 1-4 equipment slots, each filled from a
 5-tier catalog where a better card pays more but also draws more power, so
 racking up GPUs is a genuine tradeoff against your power reserve, not just
-"buy everything."
+"buy everything." Every GPU you buy is yours to keep — a full rig just
+means the new one waits in storage — and moving one between a slot and
+storage is free, so replacing a cheap card with a better one is unequip,
+then equip, any time.
 
 ## Working agreement (read this first, human or AI)
 
