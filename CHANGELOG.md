@@ -10,6 +10,92 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — One field split into four, gated by battery size
+
+**Goal:** turn the single field into a size/color/rarity progression: four
+separate raised platforms, each bigger than the last, each unlocking one
+more (rarer, more valuable) battery size. Reaching a bigger field is now
+what gets you access to the sizes above AAA.
+
+The final field (`Field_Red`) is literally the field this game already had
+-- same 150x150 size, same position, same 15 batteries, same odds -- just
+recolored. The other three are progressively smaller/halved slices of the
+same idea, doubling up to it: Green 18.75 → Yellow 37.5 → Blue 75 → Red 150.
+
+| Field | Size | Color | Allowed sizes | Battery count |
+| --- | --- | --- | --- | --- |
+| `Field_Green` | 18.75x18.75 | green | AAA | 1 |
+| `Field_Yellow` | 37.5x37.5 | yellow | AAA, AA | 1 |
+| `Field_Blue` | 75x75 | blue | AAA, AA, C | 4 |
+| `Field_Red` | 150x150 | red | AAA, AA, C, D | 15 |
+
+Battery counts aren't arbitrary -- they come from the SAME density the
+original field used (120x120 spawn square / 15 batteries = 960 sq studs per
+battery), just applied to each field's own (much smaller, for the early
+ones) spawn area, rounded to the nearest whole battery with a floor of 1.
+That's also why Field_Red's count comes back out to exactly 15 -- it's the
+same area, so the same formula reproduces the same number.
+
+### World geometry (built live in Studio, not tracked in this repo)
+- Renamed the existing `Workspace.Field` to `Field_Red` and recolored its
+  Pad red (`Color3.fromRGB(170, 50, 50)`) -- size and position untouched.
+- Added `Field_Green`, `Field_Yellow`, `Field_Blue` -- same Model+Pad
+  convention as every other platform, laid out in a row east of Field_Red
+  (X 89.375 / 127.5 / 193.75, all at Z = -21) with 10-stud gaps on every
+  side. Verified with a script that checks every pair of the four fields
+  AND the Spawn/DataCenter/Shop pads for bounding-box overlap -- none found.
+
+### [Fields.lua](src/shared/Fields.lua) — new shared module
+- The single source of truth for the four fields' Workspace NAMES and which
+  battery template names each allows (`Fields.defs`), plus
+  `Fields.isOnAnyField(position)` -- a bounding-box test against all four
+  Pads' live Size/Position. Both `BatterySpawner` and `PlayerSpeed` read
+  this instead of duplicating field logic -- the same "one file owns the
+  numbers" pattern `Upgrades.lua` already uses for the shop.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua) — rewritten around N fields
+- `templates` is now keyed by name (not a flat list) so a field can pick out
+  just the sizes it allows. Global `weight`/`mah`/`rarity`/`lifetime` per
+  size are unchanged -- computed once, the same regardless of field.
+- `buildField(def)` turns one `Fields.defs` entry into a spawn-ready field:
+  resolves its Pad, computes its own inset spawn square
+  (`pad.Size.X * 0.8`) and battery count from the Pad's ACTUAL size, and
+  re-sums weight across only its allowed sizes so picking stays correctly
+  biased among them.
+- `spawnBattery`/`randomCenterPosition`/`pickTemplate` all now take a
+  `field` argument instead of reading module-level globals -- a collected
+  or expired battery respawns on the SAME field it came from.
+- The single `AREA_CENTER`/`AREA_SIZE`/`FIELD_TOP`/`BATTERY_COUNT` config
+  constants are gone, replaced by `SPAWN_MARGIN_RATIO` (0.8) and
+  `BATTERIES_PER_SQUARE_STUD` (960) -- two numbers that apply to every
+  field uniformly instead of one field's worth of hardcoded values.
+
+### [PlayerSpeed.server.lua](src/server/PlayerSpeed.server.lua) — field check delegated
+- Replaced the single-Pad `isOnField` with `Fields.isOnAnyField` -- TRUE
+  speed now applies on ANY of the four fields, not just one. Everything
+  else (NORMAL speed off-field, the 0.2s poll, only writing WalkSpeed on
+  change) is unchanged from yesterday's split.
+
+**Concept:** pulling logic that used to live in ONE script (BatterySpawner)
+but was needed by a SECOND script (PlayerSpeed) out into a shared module --
+`Fields.lua` -- rather than copy-pasting the bounding-box test into both.
+Same idea as `Upgrades.lua`: config and shared math belong in ONE place both
+sides `require`, not duplicated and hoping they stay in sync. Also: deriving
+a count from a formula (`area / density`) instead of hardcoding four
+separate numbers, so the relationship between a field's size and how many
+batteries it holds is documented IN the code, not just in this changelog
+entry.
+
+**Tested:** Play mode -- checked `CollectionService:GetTagged("BatteryPickup")`
+against each field's bounding box: Green 1 (AAA), Yellow 1 (AA), Blue 4 (all
+AAA that run -- random, but never anything above C), Red 15 (mix up through
+C, 21 total across all four) -- every battery landed inside the field it was
+supposed to, with only the sizes that field allows. Teleported a player to
+the center of all four fields and confirmed WalkSpeed = 4 (level-0 true
+speed) on every one, and 16 (normal) well off all of them. No console errors.
+
+---
+
 ## 2026-09-11 — Two speeds: flat NORMAL everywhere, upgraded TRUE only on the field
 
 **Goal:** the Speed upgrade was affecting WalkSpeed everywhere, all the time

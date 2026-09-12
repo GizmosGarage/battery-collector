@@ -61,7 +61,8 @@ Battery Collector/
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
 │   │   └── ShopUI.client.lua             the upgrade shop panel (built entirely in code)
 │   └── shared/             → ReplicatedStorage
-│       └── Upgrades.lua    single source of truth for all 4 upgrades' costs/effects
+│       ├── Upgrades.lua    single source of truth for all 4 upgrades' costs/effects
+│       └── Fields.lua      single source of truth for the 4 fields' names + allowed battery sizes
 ├── Models/                 reference art (battery renders used to build the 3-D models)
 └── Prompts/                the AI prompts used to generate the model and image references
 ```
@@ -106,10 +107,14 @@ specific things live *only* in the place file, not this repo:
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter` (Pad + floating sign), `Workspace.Shop` (Pad + sign),
-  and `Workspace.Field` (Pad) — the raised platform batteries spawn on; see
-  `BatterySpawner.server.lua`'s `AREA_CENTER`/`AREA_SIZE`/`FIELD_TOP` for how
-  the code expects it to be sized and placed
+- `Workspace.DataCenter` (Pad + floating sign) and `Workspace.Shop` (Pad + sign)
+- The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
+  only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
+  D — this is the original single field, just recolored). Each is a `Model`
+  with one `Pad` part; `Fields.lua` is the only place their NAMES and
+  allowed battery sizes are recorded, and `BatterySpawner.server.lua` reads
+  each Pad's live size/position, so resizing or moving one in Studio needs
+  no code change
 
 If the place file is ever lost, these have to be rebuilt by hand (the
 `Prompts/` and `Models/` folders document how the original battery look was
