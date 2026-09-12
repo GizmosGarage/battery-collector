@@ -1755,3 +1755,34 @@ Snapshots exist; the notes below are reconstructed from the code.
 ### `Battery_Touched/V1.txt` — first touch detection
 - Bare `Touched` event on the battery part that prints "Something touched the
   battery!". Proof that the event fires.
+
+## 2026-09-12 — Data Center Shop panel scrolls instead of running off-screen
+
+**What changed:** `ShopUI.client.lua`'s shop panel used to size itself to
+fit every single row it built, with no limit. The Data Center Shop's panel
+(Efficiency upgrade + GPU slot-unlock row + 4 slot rows + 5 GPU catalog
+rows) added up to way more than a normal screen's height, so the bottom
+rows (the pricier GPUs) were literally off-screen and unreachable. Now a
+panel's height is capped at 560px; the title and Cash line always stay
+visible at the top, and everything below them (the upgrade/slot/GPU rows)
+sits in a `ScrollingFrame` you can scroll with the mouse wheel. The Player
+Shop's panel (just 2 rows) never gets close to the cap, so it looks and
+behaves exactly like before.
+
+**Why:** Ethan couldn't see or reach all the Data Center Shop's options —
+the panel just cut off partway down the GPU catalog.
+
+**Files:** `src/client/ShopUI.client.lua`
+
+**Concept taught:** a `ScrollingFrame` is a container that clips its
+children to its own size and lets you scroll through content taller than
+that -- paired with `AutomaticCanvasSize`, it grows its scrollable area on
+its own to match however tall its `UIListLayout`'d children add up to, so
+you never have to compute that by hand.
+
+**How tested:** live in the already-open Studio session (Roblox Studio MCP)
+-- started Play, teleported the character onto the Data Center Shop's pad,
+screenshotted the panel (title/Cash/first few rows visible, a scrollbar on
+the right, more rows implied below), then scrolled the mouse wheel down and
+screenshotted again to confirm every GPU catalog row down to the $100,000
+Data Center GPU is reachable. Stopped Play afterward.

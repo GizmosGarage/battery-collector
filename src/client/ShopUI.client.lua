@@ -65,6 +65,18 @@ local COLOR_TEXT_DIM  = Color3.fromRGB(160, 164, 174)
 
 local ROW_HEIGHT     = 74    -- a normal, single-button row
 local GPU_ROW_HEIGHT = 112   -- a catalog row: taller, has TWO buttons (Buy + Equip)
+local GAP            = 10    -- vertical gap between every stacked item
+
+-- A panel never grows taller than this -- past it, the rows scroll instead.
+-- The Data Center Shop's GPU section (unlock row + 4 slot rows + 5 catalog
+-- rows, each 74-112px tall) adds up to way more than this, which is exactly
+-- why it needs to scroll; the Player Shop's 2 rows never get close to the
+-- cap, so its panel just stays its natural, shorter height.
+local MAX_PANEL_HEIGHT = 560
+
+-- title + gap + cash line -- the part of the panel that's always visible,
+-- above the scrolling rows.
+local TOP_BLOCK_HEIGHT = 22 + GAP + 16
 
 -- Which Workspace pad each Upgrades.shops entry stands on, in the SAME
 -- order as Upgrades.shops. World-geometry names live here, in the client
@@ -322,10 +334,11 @@ local function buildGPUSection(panel, startOrder)
 	return refreshGPUs
 end
 
--- How tall a shop's panel needs to be, given exactly which rows it'll
--- build -- computed from the SAME row heights buildShopPanel/buildGPUSection
--- actually use, so the panel is never too short (clipping content) or
--- needlessly tall.
+-- Every row height a shop's panel will build, in order -- used by
+-- buildShopPanel to work out how tall the scrollable row area's content
+-- naturally is, so a short shop (few rows) stays compact and a long one
+-- (like the Data Center Shop's GPU section) knows how far it needs to
+-- scroll instead of being cut off.
 local function planRowHeights(shopDef)
 	local heights = {}
 	for _ in shopDef.ids do
@@ -354,8 +367,16 @@ local function buildShopPanel(shopDef, padName)
 	for _, h in rowHeights do
 		rowsHeight += h
 	end
-	local itemCount = 2 + #rowHeights   -- title + cash line + every row
-	local gapsHeight = (itemCount - 1) * 10
+	-- Every row's own height, plus a GAP between each pair of rows (none
+	-- if there's only one, or zero, rows).
+	local rowsBlockHeight = rowsHeight + math.max(#rowHeights - 1, 0) * GAP
+
+	-- The panel's natural height is title+cash+rows all fitting with no
+	-- scrolling at all; capped at MAX_PANEL_HEIGHT so a long GPU section
+	-- scrolls instead of running off the screen. A short panel (like the
+	-- Player Shop's 2 rows) never hits the cap and just stays compact.
+	local naturalHeight = 28 + TOP_BLOCK_HEIGHT + GAP + rowsBlockHeight
+	local panelHeight = math.min(naturalHeight, MAX_PANEL_HEIGHT)
 
 	local screen = Instance.new("ScreenGui")
 	screen.Name = "ShopUI_" .. padName
@@ -367,9 +388,7 @@ local function buildShopPanel(shopDef, padName)
 	panel.Name = "Panel"
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	panel.Position = UDim2.fromScale(0.5, 0.5)
-	-- title(22) + cashLine(16) + every row's own height + a 10px gap
-	-- between every pair of items + 14px padding top and bottom.
-	panel.Size = UDim2.fromOffset(400, 22 + 16 + rowsHeight + gapsHeight + 28)
+	panel.Size = UDim2.fromOffset(400, panelHeight)
 	panel.BackgroundColor3 = COLOR_BG
 	panel.BorderSizePixel = 0
 	panel.Parent = screen
@@ -381,13 +400,10 @@ local function buildShopPanel(shopDef, padName)
 	uiPadding.PaddingLeft = UDim.new(0, 16)
 	uiPadding.PaddingRight = UDim.new(0, 16)
 
-	local layout = Instance.new("UIListLayout", panel)
-	layout.Padding = UDim.new(0, 10)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-
 	local function label(text, size, color, order)
 		local l = Instance.new("TextLabel")
 		l.BackgroundTransparency = 1
+		l.Position = UDim2.fromOffset(0, order == 1 and 0 or 22 + GAP)
 		l.Size = UDim2.new(1, 0, 0, size)
 		l.Font = Enum.Font.GothamMedium
 		l.TextSize = size
@@ -403,10 +419,29 @@ local function buildShopPanel(shopDef, padName)
 	title.Font = Enum.Font.GothamBold
 	local cashLine = label("Cash: 0", 16, COLOR_TEXT_DIM, 2)
 
+	-- Everything below the title/cash line lives in a ScrollingFrame, so
+	-- when there are more rows than MAX_PANEL_HEIGHT can show, you scroll
+	-- to reach them instead of them just running off-screen.
+	local scrollFrame = Instance.new("ScrollingFrame")
+	scrollFrame.Name = "Rows"
+	scrollFrame.BackgroundTransparency = 1
+	scrollFrame.BorderSizePixel = 0
+	scrollFrame.Position = UDim2.fromOffset(0, TOP_BLOCK_HEIGHT + GAP)
+	scrollFrame.Size = UDim2.new(1, 0, 1, -(TOP_BLOCK_HEIGHT + GAP))
+	scrollFrame.CanvasSize = UDim2.fromOffset(0, 0)      -- grown automatically, below
+	scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scrollFrame.ScrollBarThickness = 6
+	scrollFrame.ScrollBarImageColor3 = COLOR_TEXT_DIM
+	scrollFrame.Parent = panel
+
+	local rowsLayout = Instance.new("UIListLayout", scrollFrame)
+	rowsLayout.Padding = UDim.new(0, GAP)
+	rowsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
 	-- One row per upgrade id THIS shop carries.
 	local rows = {}
 	for i, id in shopDef.ids do
-		rows[id] = makeRowFrame(panel, 2 + i, function()
+		rows[id] = makeRowFrame(scrollFrame, i, function()
 			buyEvent:FireServer(id)   -- ask the server; it decides
 		end)
 	end
@@ -415,7 +450,7 @@ local function buildShopPanel(shopDef, padName)
 	-- goes after the normal upgrade rows, if this shop has one.
 	local refreshGPUs
 	if shopDef.gpuSection then
-		refreshGPUs = buildGPUSection(panel, 2 + #shopDef.ids + 1)
+		refreshGPUs = buildGPUSection(scrollFrame, #shopDef.ids + 1)
 	end
 
 	local function refresh()
