@@ -10,6 +10,34 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — Yellow and Blue fields: pinned battery counts (4 and 8)
+
+**Goal:** yesterday's density formula gave Field_Yellow and Field_Blue 1 and
+4 batteries -- technically consistent with the original field's density, but
+Ethan wants those two busier than their small footprints imply. Let a field
+override the formula with an exact number instead of always deriving one.
+
+### [Fields.lua](src/shared/Fields.lua) — optional `count` per field
+- Added `count = 4` to `Field_Yellow` and `count = 8` to `Field_Blue`.
+  `Field_Green` and `Field_Red` have no `count` -- they still fall through
+  to the area-based formula (which happens to land on 1 and 15).
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua) — one-line change
+- `buildField` now does `local count = def.count or <the formula>` -- an
+  explicit number in Fields.lua wins; otherwise nothing changed from
+  yesterday.
+
+**Concept:** an optional override sitting ALONGSIDE a computed default
+(`X or fallback`), rather than replacing the formula outright -- Green and
+Red keep benefiting from "resize the Pad and the count follows," while
+Yellow and Blue get an exact, deliberately-chosen number. Same idea as a
+function argument having a default value.
+
+**Tested:** Play mode -- `CollectionService:GetTagged("BatteryPickup")`
+sorted by field: Green 1, Yellow 4, Blue 8, Red 15 (28 total). No console errors.
+
+---
+
 ## 2026-09-11 — One field split into four, gated by battery size
 
 **Goal:** turn the single field into a size/color/rarity progression: four

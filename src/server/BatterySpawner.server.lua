@@ -126,6 +126,10 @@ local function buildField(def)
 		"BatterySpawner: spawn area bigger than " .. pad:GetFullName() .. " -- batteries would spawn off the platform"
 	)
 
+	-- Fields.lua can pin an exact count (def.count); otherwise derive one
+	-- from this field's own area, same density the original field used.
+	local count = def.count or math.max(1, math.floor(areaSize ^ 2 / BATTERIES_PER_SQUARE_STUD + 0.5))
+
 	return {
 		name = def.name,
 		center = pad.Position,
@@ -133,7 +137,7 @@ local function buildField(def)
 		areaSize = areaSize,
 		templates = allowed,
 		totalWeight = totalWeight,
-		count = math.max(1, math.floor(areaSize ^ 2 / BATTERIES_PER_SQUARE_STUD + 0.5)),
+		count = count,
 	}
 end
 
