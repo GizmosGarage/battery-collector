@@ -12,8 +12,15 @@
 
 	Working up to a bigger field is what unlocks the rarer, more valuable
 	sizes. Field_Red is exactly the field this game started with -- same
-	size, same 15 batteries, same odds -- just recolored; the other three
-	are smaller slices of the same idea.
+	size, same odds -- just recolored; the other three are smaller slices
+	of the same idea.
+
+	Each field's `count` (Fields.lua) is now a CAP, not a fixed number it's
+	always at. How many batteries a field actually holds drifts randomly
+	between 1 and that cap: every SPAWN_CHECK_INTERVAL seconds, a field
+	that's under its cap rolls SPAWN_CHANCE odds of spawning one more. A
+	field never OVERFLOWS its cap, but it doesn't snap straight back to full
+	the instant something's collected either -- see startFieldLoop below.
 
 	For each field, this script:
 	  1. clones one of ITS allowed battery models from ServerStorage
@@ -22,8 +29,9 @@
 	  3. tags it so the client's BatterySpin/BatteryGlow scripts will animate it
 	  4. on a player touching a battery's Hitbox -- if they have room (Capacity
 	     upgrade) -- adds that battery's mAh to their score and a slot to their count
-	  5. if nobody collects it in time, or once it's collected, it's replaced
-	     on the SAME field it came from
+	  5. once it's collected, or if nobody collects it in time, it's removed --
+	     the field's own refill loop (not this battery) decides when a
+	     replacement eventually appears
 
 	Rarer batteries are worth more mAh AND vanish faster if left uncollected --
 	see BASE_LIFETIME / LIFETIME_FALLOFF below -- so they reward rushing for
@@ -45,9 +53,18 @@ local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local Fields = require(ReplicatedStorage:WaitForChild("Fields"))
 
 -- ============================ CONFIG ============================
-local BASE_HOVER    = 1.8    -- how far a battery's BOTTOM floats above whichever field it's on
-local RESPAWN_DELAY = 3      -- seconds between a battery being COLLECTED and a new one appearing
-local BATTERY_TAG   = "BatteryPickup"   -- CollectionService tag the client watches for
+local BASE_HOVER  = 1.8    -- how far a battery's BOTTOM floats above whichever field it's on
+local BATTERY_TAG = "BatteryPickup"   -- CollectionService tag the client watches for
+
+-- How a field's battery population refills over time. Every
+-- SPAWN_CHECK_INTERVAL seconds, EACH field that's below its own cap
+-- (Fields.lua's `count`) rolls SPAWN_CHANCE odds of spawning one more
+-- battery. This randomness is what makes `count` a MAXIMUM a field can
+-- hold rather than a fixed number it's always pinned at -- on average, a
+-- slot takes SPAWN_CHECK_INTERVAL / SPAWN_CHANCE seconds to refill, but
+-- exactly when varies every time.
+local SPAWN_CHECK_INTERVAL = 2     -- seconds between refill rolls
+local SPAWN_CHANCE         = 0.5   -- odds, per roll, of actually spawning (if under cap)
 
 -- Batteries spawn inside a square INSET from each field's own Pad, so
 -- nothing ever spawns at (or past) the edge. 0.8 = the spawn square is 80%
@@ -56,10 +73,8 @@ local SPAWN_MARGIN_RATIO = 0.8
 
 -- How many square studs of field each battery gets, on average -- the SAME
 -- density the original single field used (120x120 studs / 15 batteries =
--- 960). Every field below derives its OWN battery count from this, scaled
--- to its own area, so the small early fields aren't crowded relative to
--- their size -- and Field_Red, being exactly the size the original field
--- was, comes back out to exactly 15, unchanged.
+-- 960). Only used as a FALLBACK, for a field Fields.lua doesn't give an
+-- explicit `count` to.
 local BATTERIES_PER_SQUARE_STUD = 960
 
 -- The battery models to clone, in order from COMMONEST to RAREST. Each has
@@ -78,9 +93,9 @@ local RARITY_FALLOFF = 3
 -- / D 13500). This is the SAME constant the data center's power need is
 -- anchored to, and it never changes based on which field a battery is on.
 
--- How long an uncollected battery sticks around before it vanishes and
--- reappears elsewhere on the SAME field. Rarer sizes live this many times
--- LESS long, so a D battery is a race against the clock, not a guaranteed pickup.
+-- How long an uncollected battery sticks around before it vanishes.
+-- Rarer sizes live this many times LESS long, so a D battery is a race
+-- against the clock, not a guaranteed pickup.
 local BASE_LIFETIME    = 60   -- seconds, for AAA (the commonest / longest-lived)
 local LIFETIME_FALLOFF = 2    -- AAA 60s / AA 30s / C 15s / D 7.5s
 -- ==============================================================
@@ -106,10 +121,11 @@ for i, name in BATTERY_TEMPLATES do
 end
 
 -- Turn one Fields.defs entry into a ready-to-spawn field: resolves its Pad,
--- works out its own spawn square + battery count from the Pad's ACTUAL size
--- (so resizing a Pad in Studio needs no code change here), and narrows
--- `templates` down to just the sizes this field allows -- re-summing their
--- weight so picking is still correctly weighted among only THOSE sizes.
+-- works out its own spawn square from the Pad's ACTUAL size (so resizing a
+-- Pad in Studio needs no code change here), and narrows `templates` down to
+-- just the sizes this field allows -- re-summing their weight so picking is
+-- still correctly weighted among only THOSE sizes. `liveCount` tracks how
+-- many of this field's batteries currently exist, for startFieldLoop below.
 local function buildField(def)
 	local pad = Fields.getPad(def.name)
 
@@ -126,7 +142,7 @@ local function buildField(def)
 		"BatterySpawner: spawn area bigger than " .. pad:GetFullName() .. " -- batteries would spawn off the platform"
 	)
 
-	-- Fields.lua can pin an exact count (def.count); otherwise derive one
+	-- Fields.lua can pin an exact cap (def.count); otherwise derive one
 	-- from this field's own area, same density the original field used.
 	local count = def.count or math.max(1, math.floor(areaSize ^ 2 / BATTERIES_PER_SQUARE_STUD + 0.5))
 
@@ -137,7 +153,8 @@ local function buildField(def)
 		areaSize = areaSize,
 		templates = allowed,
 		totalWeight = totalWeight,
-		count = count,
+		count = count,       -- the CAP -- this field never holds more than this many at once
+		liveCount = 0,        -- how many of this field's batteries exist RIGHT NOW
 	}
 end
 
@@ -171,7 +188,9 @@ local function randomCenterPosition(field, height)
 end
 
 -- Create one battery on `field` and wire up what happens when it's
--- collected or expires.
+-- collected or expires. Unlike before, removal does NOT queue its own
+-- replacement -- that field's startFieldLoop is what decides if/when a new
+-- one shows up, which is what lets the population sit below the cap.
 local function spawnBattery(field)
 	local pick = pickTemplate(field)
 	local battery = pick.model:Clone()
@@ -183,23 +202,22 @@ local function spawnBattery(field)
 	battery:SetAttribute("Rarity", pick.rarity)     -- 1 (AAA) .. 4 (D); the client uses this to pick a glow tier
 	CollectionService:AddTag(battery, BATTERY_TAG)
 	battery.Parent = workspace                      -- set parent LAST, so it replicates with attribute + tag already on it
+	field.liveCount += 1
 
 	-- A clone made on the server is fully built right away, so .Hitbox is safe here.
 	local hitbox = battery.Hitbox
 	local collected = false   -- guard: both .Touched (many times per footstep) and
 	                          -- the expiry timer can try to remove this battery
 
-	-- Removes this battery (only once, however it happens) and queues its
-	-- replacement -- on the SAME field -- `delay` seconds later.
-	local function removeBattery(delay)
+	-- Removes this battery (only once, however it happens) and frees up its
+	-- slot -- the field's own loop decides when/if that slot gets refilled.
+	local function removeBattery()
 		if collected then
 			return
 		end
 		collected = true
 		battery:Destroy()
-		task.delay(delay, function()
-			spawnBattery(field)
-		end)
+		field.liveCount -= 1
 	end
 
 	hitbox.Touched:Connect(function(hit)
@@ -228,19 +246,36 @@ local function spawnBattery(field)
 		carried.Value += 1
 		mah.Value += pick.mah
 
-		removeBattery(RESPAWN_DELAY)
+		removeBattery()
 	end)
 
-	-- If nobody collects it before its lifetime is up, it vanishes and a fresh
-	-- one appears elsewhere on the same field -- no extra delay, it already had its turn.
-	task.delay(pick.lifetime, function()
-		removeBattery(0)
+	-- If nobody collects it before its lifetime is up, it vanishes.
+	task.delay(pick.lifetime, removeBattery)
+end
+
+-- Keep `field` topped up ONLY probabilistically: every SPAWN_CHECK_INTERVAL
+-- seconds, if it's under its cap, roll SPAWN_CHANCE odds of adding one more.
+-- This is the loop that makes `field.count` a ceiling instead of a target
+-- that's always immediately re-hit -- most checks either find the field
+-- already full (nothing to do) or fail the roll (nothing happens this time).
+local function startFieldLoop(field)
+	task.spawn(function()
+		while true do
+			task.wait(SPAWN_CHECK_INTERVAL)
+			if field.liveCount < field.count and math.random() < SPAWN_CHANCE then
+				spawnBattery(field)
+			end
+		end
 	end)
 end
 
--- Fill every field when the server starts.
+-- Give each field a random HEAD START -- somewhere between 1 and its cap,
+-- inclusive -- instead of always snapping straight to the max on server
+-- boot, then hand it off to its own loop to grow or drain from there.
 for _, field in fields do
-	for i = 1, field.count do
+	local startCount = math.random(1, field.count)
+	for _ = 1, startCount do
 		spawnBattery(field)
 	end
+	startFieldLoop(field)
 end

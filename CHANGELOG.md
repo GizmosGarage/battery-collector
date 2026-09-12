@@ -10,6 +10,56 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-11 — A field's count is now a CAP, not a fixed number it's always at
+
+**Goal:** every field always held exactly its `count` -- the instant a
+battery was collected or expired, this script immediately spawned a
+replacement on the same field. Ethan wants that number to mean "the most
+this field can ever hold," with the ACTUAL number drifting randomly at or
+below it -- a field doesn't have to be full.
+
+### The mechanic changed, not the numbers
+- **Before:** `removeBattery(delay)` always queued its own replacement via
+  `task.delay(delay, spawnBattery)` -- collected or expired, a fresh battery
+  was guaranteed, just after a short pause. A field was ALWAYS at `count`
+  after that pause.
+- **Now:** `removeBattery()` just destroys the battery and decrements the
+  field's `liveCount` -- no replacement queued. A new per-field loop
+  (`startFieldLoop`) is what independently decides whether to add one:
+  every `SPAWN_CHECK_INTERVAL` (2s), if `liveCount < count`, it rolls
+  `SPAWN_CHANCE` (50%) odds of spawning one more. Most checks either find
+  the field already full (nothing to do) or fail the roll (nothing happens
+  this time) -- so the population drifts, rather than snapping to the cap.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua)
+- Added `field.liveCount` (how many of this field's batteries exist right
+  now) alongside the existing `field.count` (the cap).
+- `spawnBattery` increments `liveCount`; `removeBattery` (now argument-less
+  -- there's no "respawn after N seconds" left to parameterize) decrements it.
+- Added `startFieldLoop(field)`: the probabilistic refill loop described
+  above, one per field, started once at boot.
+- Startup no longer fills every field straight to `count` -- each field now
+  gets a random HEAD START between 1 and its cap
+  (`math.random(1, field.count)`), then `startFieldLoop` takes over growing
+  or draining it from there. `RESPAWN_DELAY` is gone; nothing reads it
+  anymore.
+
+**Concept:** the difference between an ALWAYS-triggered follow-up action
+("when X happens, Y always happens next") and an INDEPENDENT periodic check
+("every so often, maybe do Y if some condition holds"). The second is what
+turns a fixed number into a genuine cap with real variation under it --
+similar to how a slot machine or a loot table rolls odds on a timer rather
+than guaranteeing an outcome after every event.
+
+**Tested:** Play mode, restarted twice -- confirmed the head-start count
+actually varies (one run: Green 1 / Yellow 4 / Blue 8 / Red 15; next run:
+Green 1 / Yellow 4 / Blue 4 / Red 5), not always maxed. Sampled Field_Blue's
+live count every 2s for 16s with no player interaction and watched it drift
+between 7 and 8 purely from natural expiry + refill rolls -- never exceeding
+its cap of 8. No console errors.
+
+---
+
 ## 2026-09-11 — Every field's battery count is now an explicit, adjustable number
 
 **Goal:** yesterday's `count` override only existed on Yellow and Blue --
