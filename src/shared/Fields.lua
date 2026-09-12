@@ -2,10 +2,10 @@
 	Fields  --  ModuleScript, lives in ReplicatedStorage (shared)
 
 	The single source of truth for the FOUR battery fields: what each is
-	named in Workspace, and which battery sizes are allowed to spawn on it.
-	BatterySpawner.server.lua reads `templateNames` to build each field's
-	spawn pool; PlayerSpeed.server.lua only needs `isOnAnyField` (any of the
-	four counts as "the field" for the Speed upgrade's TRUE speed -- see
+	named in Workspace, and what MIX of battery sizes spawns on it.
+	BatterySpawner.server.lua reads `chances` to build each field's spawn
+	pool; PlayerSpeed.server.lua only needs `isOnAnyField` (any of the four
+	counts as "the field" for the Speed upgrade's TRUE speed -- see
 	Upgrades.lua).
 
 	The Pads themselves (size, position, color) live in the .rbxl place
@@ -16,11 +16,19 @@
 
 local Fields = {}
 
--- Commonest/smallest field first. `templateNames` is which battery MODEL
--- names (from ServerStorage) are allowed to spawn there -- always a run of
--- the commonest sizes, so reaching a bigger field is what unlocks the
--- rarer, more valuable ones. Field_Red allows everything -- it's the same
--- field the game started with, just recolored.
+-- Commonest/smallest field first. `chances` is which battery MODEL names
+-- (from ServerStorage) can spawn there, and how heavily each is weighted
+-- against the others ON THIS FIELD -- the numbers only matter relative to
+-- each other (BatterySpawner sums them and rolls against the total), so
+-- they read naturally as "out of 100." A size missing from a field's
+-- `chances` can never spawn there at all.
+--
+-- Each field is built to raise what counts as a NORMAL pickup: AAA is all
+-- there is on Green; AA becomes the routine find on Blue; C becomes routine
+-- on Red, with D as the rare, exciting exception (10%, a sixth as often as
+-- C on the same field) rather than the everyday battery. A given size's
+-- mAh/lifetime (see BATTERY_TEMPLATES below) never change field to field --
+-- only how OFTEN it turns up does.
 --
 -- `count` is how many batteries that field holds at once -- change any
 -- number here to retune that field, nothing else needs touching. It's
@@ -29,10 +37,10 @@ local Fields = {}
 -- single field used -- 960 sq studs/battery -- which is where Green's 1 and
 -- Red's 15 originally came from, now written down explicitly below).
 Fields.defs = {
-	{ name = "Field_Green",  templateNames = { "Battery_AAA" }, count = 1 },
-	{ name = "Field_Yellow", templateNames = { "Battery_AAA", "Battery" }, count = 4 },
-	{ name = "Field_Blue",   templateNames = { "Battery_AAA", "Battery", "Battery_C" }, count = 8 },
-	{ name = "Field_Red",    templateNames = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }, count = 15 },
+	{ name = "Field_Green",  chances = { Battery_AAA = 100 }, count = 1 },
+	{ name = "Field_Yellow", chances = { Battery_AAA = 65, Battery = 35 }, count = 4 },
+	{ name = "Field_Blue",   chances = { Battery_AAA = 20, Battery = 55, Battery_C = 25 }, count = 8 },
+	{ name = "Field_Red",    chances = { Battery_AAA = 10, Battery = 20, Battery_C = 60, Battery_D = 10 }, count = 15 },
 }
 
 -- Resolve every field's Pad instance once (WaitForChild blocks until the

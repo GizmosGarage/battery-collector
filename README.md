@@ -66,7 +66,7 @@ Battery Collector/
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    single source of truth for the 3 level upgrades' costs/effects
 │       ├── GPUs.lua        single source of truth for the GPU catalog + equipment slots
-│       └── Fields.lua      single source of truth for the 4 fields' names + allowed battery sizes
+│       └── Fields.lua      single source of truth for the 4 fields' names + battery spawn mix
 ├── Models/                 reference art (battery renders used to build the 3-D models)
 └── Prompts/                the AI prompts used to generate the model and image references
 ```

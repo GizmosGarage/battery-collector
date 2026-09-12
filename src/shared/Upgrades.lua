@@ -41,10 +41,11 @@ for _, shop in Upgrades.shops do
 	end
 end
 
--- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales every
--- other size up from this by the same RARITY_FALLOFF it uses for spawn odds
--- (AAA 500 / AA 1500 / C 4500 / D 13500) -- "a battery's worth of power" means
--- the same thing everywhere this number is used.
+-- The mAh a single AAA (commonest) battery is worth. BatterySpawner scales
+-- every other size up from this by its own RARITY_FALLOFF (AAA 500 / AA
+-- 1500 / C 4500 / D 13500) -- "a battery's worth of power" means the same
+-- thing everywhere this number is used. How OFTEN each size actually spawns
+-- is a separate, per-field setting -- see Fields.lua's `chances`.
 Upgrades.BASE_BATTERY_MAH = 500
 
 Upgrades.defs = {

@@ -3,17 +3,19 @@
 
 	The SERVER half of the batteries. There are now FOUR fields (see
 	Fields.lua) -- differently sized, differently colored raised platforms,
-	each allowing a different mix of battery sizes:
+	each with its OWN battery mix (Fields.lua's `chances`):
 
-		Field_Green   (smallest)  -- AAA only
-		Field_Yellow               -- AAA, AA
-		Field_Blue                -- AAA, AA, C
-		Field_Red     (biggest)   -- AAA, AA, C, D
+		Field_Green   (smallest)  -- AAA 100%
+		Field_Yellow               -- AAA 65%, AA 35%
+		Field_Blue                -- AAA 20%, AA 55%, C 25%
+		Field_Red     (biggest)   -- AAA 10%, AA 20%, C 60%, D 10%
 
-	Working up to a bigger field is what unlocks the rarer, more valuable
-	sizes. Field_Red is exactly the field this game started with -- same
-	size, same odds -- just recolored; the other three are smaller slices
-	of the same idea.
+	Each field raises what counts as a NORMAL pickup: AAA is all there is
+	on Green, AA becomes the routine find on Blue, C becomes routine on
+	Red -- with D as the rare exciting exception there (10%, a sixth as
+	often as C), not the everyday battery. Field_Red is exactly the field
+	this game started with -- same size -- just recolored; the other three
+	are smaller slices of the same idea, each with their own mix.
 
 	Each field's `count` (Fields.lua) is now a CAP, not a fixed number it's
 	always at. How many batteries a field actually holds drifts randomly
@@ -38,8 +40,9 @@
 
 	Rarer batteries are worth more mAh AND vanish faster if left uncollected --
 	see BASE_LIFETIME / LIFETIME_FALLOFF below -- so they reward rushing for
-	them. A battery's rarity/mAh/lifetime never change based on which field
-	it's on -- only WHICH sizes can appear there does.
+	them. A battery's mAh/lifetime never change based on which field it's on
+	-- only HOW OFTEN each size turns up (or whether it can appear at all)
+	does, per Fields.lua's `chances`.
 
 	The lean and spin are PURELY VISUAL and live in client LocalScripts
 	(StarterPlayer > StarterPlayerScripts), so no movement data is sent over the
@@ -92,16 +95,12 @@ local BATTERIES_PER_SQUARE_STUD = 960
 -- the sizes differ in mAh and lifetime, not in how much room they take up.
 local BATTERY_TEMPLATES = { "Battery_AAA", "Battery", "Battery_C", "Battery_D" }
 
--- Each size in this list spawns this many times less often than the one
--- before it (among whatever sizes a given field allows), so the odds fall
--- off exponentially -- see the per-field renormalizing in buildField below.
+-- How much MORE capacity (mAh) each rarer size holds than the one before it
+-- -- AAA = Upgrades.BASE_BATTERY_MAH, and each rarer size is RARITY_FALLOFF
+-- times that (AAA 500 / AA 1500 / C 4500 / D 13500). This is a battery's
+-- WORTH, not how often it spawns -- spawn odds are Fields.lua's `chances`,
+-- set per field, not derived from this number.
 local RARITY_FALLOFF = 3
-
--- Battery capacity (mAh) also scales by the SAME falloff, so a battery is
--- worth as much power as it is rare: AAA = Upgrades.BASE_BATTERY_MAH, and
--- each rarer size is RARITY_FALLOFF times that (AAA 500 / AA 1500 / C 4500
--- / D 13500). This is the SAME constant the data center's power need is
--- anchored to, and it never changes based on which field a battery is on.
 
 -- How long an uncollected battery sticks around before it vanishes.
 -- Rarer sizes live this many times LESS long, so a D battery is a race
@@ -110,12 +109,12 @@ local BASE_LIFETIME    = 60   -- seconds, for AAA (the commonest / longest-lived
 local LIFETIME_FALLOFF = 2    -- AAA 60s / AA 30s / C 15s / D 7.5s
 -- ==============================================================
 
--- Look each template up once, keyed by name. weight/mah/rarity are GLOBAL --
--- the same falloff^steps-from-rarest/commonest numbers no matter which
--- field a battery spawns on, so a AAA is exactly as common (relative to
--- whatever else that field allows) and worth exactly as much everywhere it
--- appears.
-local templates = {}   -- name -> { model, height, weight, mah, rarity, lifetime }
+-- Look each template up once, keyed by name. mah/rarity/lifetime are
+-- GLOBAL -- the same numbers no matter which field a battery spawns on, so
+-- a AAA is worth exactly as much and lives exactly as long everywhere it
+-- appears. How OFTEN each size turns up is Fields.lua's `chances`, which
+-- differs per field -- see buildField below.
+local templates = {}   -- name -> { model, height, mah, rarity, lifetime }
 for i, name in BATTERY_TEMPLATES do
 	local model = ServerStorage:WaitForChild(name, 10)
 	assert(model, "BatterySpawner: missing template '" .. name .. "' in ServerStorage")
@@ -123,7 +122,6 @@ for i, name in BATTERY_TEMPLATES do
 	templates[name] = {
 		model = model,
 		height = size.Y,
-		weight = RARITY_FALLOFF ^ (#BATTERY_TEMPLATES - i),
 		mah = math.floor(Upgrades.BASE_BATTERY_MAH * RARITY_FALLOFF ^ (i - 1)),
 		rarity = i,
 		lifetime = BASE_LIFETIME / LIFETIME_FALLOFF ^ (i - 1),
@@ -132,18 +130,20 @@ end
 
 -- Turn one Fields.defs entry into a ready-to-spawn field: resolves its Pad,
 -- works out its own spawn square from the Pad's ACTUAL size (so resizing a
--- Pad in Studio needs no code change here), and narrows `templates` down to
--- just the sizes this field allows -- re-summing their weight so picking is
--- still correctly weighted among only THOSE sizes. `liveCount` tracks how
--- many of this field's batteries currently exist, for startFieldLoop below.
+-- Pad in Studio needs no code change here), and builds its spawn pool from
+-- `def.chances` -- THIS field's own weighting, not a global one, which is
+-- what lets Green/Yellow/Blue/Red each have a different "normal" battery.
+-- `liveCount` tracks how many of this field's batteries currently exist,
+-- for startFieldLoop below.
 local function buildField(def)
 	local pad = Fields.getPad(def.name)
 
 	local allowed, totalWeight = {}, 0
-	for _, name in def.templateNames do
-		local entry = templates[name]
-		table.insert(allowed, entry)
-		totalWeight += entry.weight
+	for name, chance in def.chances do
+		local template = templates[name]
+		assert(template, "BatterySpawner: Fields.lua's " .. def.name .. " chances references unknown battery '" .. name .. "'")
+		table.insert(allowed, { template = template, weight = chance })
+		totalWeight += chance
 	end
 
 	local areaSize = pad.Size.X * SPAWN_MARGIN_RATIO
@@ -174,17 +174,18 @@ for _, def in Fields.defs do
 	table.insert(fields, buildField(def))
 end
 
--- Pick a template at random from ONE field's allowed list, biased by weight
--- -- commoner sizes (among that field's own allowed sizes) win more often.
+-- Pick a template at random from ONE field's spawn pool, biased by that
+-- FIELD's own chances (Fields.lua) -- the same size can be common on one
+-- field and rare on another.
 local function pickTemplate(field)
 	local roll = math.random() * field.totalWeight
 	for _, entry in field.templates do
 		roll -= entry.weight
 		if roll <= 0 then
-			return entry
+			return entry.template
 		end
 	end
-	return field.templates[#field.templates]   -- float rounding safety net
+	return field.templates[#field.templates].template   -- float rounding safety net
 end
 
 -- Pick a random hover position inside `field`'s square, for a battery

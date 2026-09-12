@@ -10,6 +10,73 @@ this file are the record now. The `Scripts/` folder was removed 2026-09-10.)
 
 ---
 
+## 2026-09-12 — Each field gets its own battery mix, not a shared falloff
+
+**Goal:** every field picked from the SAME global rarity curve (falloff^3),
+just renormalized to whatever sizes it allowed -- so Blue's mix (AAA/AA/C
+renormalized from weights 27/9/3) worked out to roughly 69/23/8, nothing
+like "AA is the normal battery here." Ethan wants each field to raise what
+counts as a NORMAL pickup on purpose: AAA-only on Green, AA becomes routine
+on Blue, C becomes routine on Red with D as a rare exciting exception --
+using an explicit percentage table per field instead of one shared formula.
+
+| Field | AAA | AA | C | D |
+| --- | --: | --: | --: | --: |
+| Green | 100% | -- | -- | -- |
+| Yellow | 65% | 35% | -- | -- |
+| Blue | 20% | 55% | 25% | -- |
+| Red | 10% | 20% | 60% | 10% |
+
+A battery's mAh and lifetime are UNCHANGED (still 500/1500/4500/13500 mAh,
+60/30/15/7.5s) -- only how often each size turns up on a given field does.
+
+### [Fields.lua](src/shared/Fields.lua) — `templateNames` (a list) → `chances` (a weighted table)
+- Each field def now has `chances = { Battery_AAA = 65, Battery = 35 }`
+  (etc.) instead of a bare list of allowed names. The numbers are read
+  naturally as percentages here (each field's own add up to 100), but
+  functionally they're just relative weights -- BatterySpawner sums
+  whatever's there and rolls against the total, so they'd still work
+  un-normalized.
+- A size left out of a field's `chances` still can't spawn there at all --
+  same "which sizes are allowed" behavior as before, just alongside an
+  explicit "how often," instead of that being an accident of a shared curve.
+
+### [BatterySpawner.server.lua](src/server/BatterySpawner.server.lua) — per-field weights, not a global one
+- `templates[name]` no longer carries a `weight` -- that was the global
+  falloff-based spawn odds, which no longer exist. It still carries
+  `mah`/`rarity`/`lifetime`, which stay global (a AAA is worth the same and
+  lives the same length everywhere).
+- `buildField` now reads `def.chances` directly as each allowed size's
+  weight for THAT field (with an `assert` catching a typo'd battery name in
+  Fields.lua immediately, at boot, instead of that size silently never
+  spawning). `pickTemplate` is otherwise the same weighted-roulette pick as
+  before -- only where the weight comes from changed.
+- `RARITY_FALLOFF` is still here, but now purely for mAh scaling (its
+  original second job) -- the "spawn odds fall off exponentially" comment
+  that described its OTHER old job is gone.
+
+**Concept:** separating two things that used to be accidentally coupled
+through one constant -- how RARE a battery is (spawn odds) and how VALUABLE
+it is (mAh) -- into two independent settings. They still happen to move
+together globally (mAh scaling is still exponential), but now a field's
+spawn MIX is a deliberate, per-field design choice instead of a side effect
+of "renormalize the global curve to whatever this field allows."
+
+**Tested:** a 200,000-sample Monte Carlo simulation (the exact same
+roulette-wheel algorithm BatterySpawner uses, run against the real
+`Fields.lua` data) landed within ~0.2 percentage points of every target on
+every field: Green 100% AAA; Yellow 65.0/35.0; Blue 19.9/55.2/24.9; Red
+10.0/20.2/59.9/9.9. Then in Play mode, checked currently-live batteries'
+`Rarity` attributes per field -- Green all AAA, Yellow mostly AAA with some
+AA, Blue mostly AA with some AAA and C, Red spread across AAA/AA/C with no D
+in that small snapshot -- consistent with the odds AND with rarer sizes
+(shorter-lived) being under-represented in any single live snapshot, same
+effect Ethan called out in his own notes. No console errors, including no
+assertion failures (which would have fired immediately at server boot if
+any `chances` name didn't match a real battery template).
+
+---
+
 ## 2026-09-12 — Cash upgrade replaced with real GPU hardware (first pass)
 
 **Goal:** the old Cash-per-second upgrade was one number that went up
