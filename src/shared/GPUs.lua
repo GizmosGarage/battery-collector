@@ -95,4 +95,25 @@ end
 -- after that, up to your current space tier's maxSlots, costs this.
 GPUs.SLOT_PRICE = 100
 
+-- Add up a whole rig's combined Cash/sec and power draw -- the same sum
+-- DataCenter.server.lua needs to run the payout loop for ONE player, and
+-- StatusPanel.client.lua needs to show that SAME player's own numbers back
+-- to them. Both scripts read GPU ids off "Slot<N>GPU" attributes, just on
+-- different Instances (a server script can read any player's; a client
+-- script only ever reads its own LocalPlayer's) -- `getSlotId(i)` is
+-- whichever of those the caller already has, so this module never needs to
+-- know about Players or attributes itself, only the catalog math.
+function GPUs.rigTotals(unlockedSlots, getSlotId)
+	local cashPerSec, powerDraw = 0, 0
+	for i = 1, unlockedSlots do
+		local id = getSlotId(i)
+		local gpu = id ~= nil and id ~= "" and GPUs.get(id)
+		if gpu then
+			cashPerSec += gpu.cashPerSec
+			powerDraw += gpu.powerDraw
+		end
+	end
+	return cashPerSec, powerDraw
+end
+
 return GPUs

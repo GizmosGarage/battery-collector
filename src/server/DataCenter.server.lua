@@ -67,19 +67,14 @@ local lastDump = {}
 
 -- Sum up a player's whole rig, straight off the attributes Shop.server.lua
 -- publishes ("UnlockedSlots", "Slot<N>GPU") -- this script never needs to
--- know about purchases or slots, just the totals they add up to.
+-- know about purchases or slots, just the totals they add up to. The actual
+-- summing is GPUs.rigTotals (shared with StatusPanel.client.lua), so the
+-- payout math and the HUD that displays it can never drift apart.
 local function rigTotals(player)
 	local unlocked = player:GetAttribute("UnlockedSlots") or 0
-	local cashPerSec, powerDraw = 0, 0
-	for i = 1, unlocked do
-		local id = player:GetAttribute("Slot" .. i .. "GPU")
-		local gpu = id ~= "" and GPUs.get(id)
-		if gpu then
-			cashPerSec += gpu.cashPerSec
-			powerDraw += gpu.powerDraw
-		end
-	end
-	return cashPerSec, powerDraw
+	return GPUs.rigTotals(unlocked, function(i)
+		return player:GetAttribute("Slot" .. i .. "GPU")
+	end)
 end
 
 -- Tell THIS player's client roughly how many seconds their reserve will last at

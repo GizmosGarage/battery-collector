@@ -33,6 +33,19 @@ decreases, even as you spend) past that field's threshold — locked, a
 field's Pad shows dimmed grey with a sign explaining what's needed;
 batteries there still spawn normally, you just can't collect them yet.
 
+**An always-on status panel** sits in the top-left corner the whole time
+you're playing (`StatusPanel.client.lua`), out of the way of the leaderstats
+scoreboard, the shop panels, and mobile's on-screen controls. It shows four
+things at a glance: your battery bag's fullness (carried / capacity), your
+data center's ACTUAL Cash/sec (zero, with a plain-English reason like
+"Equip a GPU" or "Collect and deposit batteries," whenever it can't run —
+never a number you're not really earning), how long the banked power
+reserve will keep the current rig running, and a progress bar toward the
+next locked field (lifetime Cash earned / needed — spending never moves
+this backwards). It shows "Loading..." for a moment right after joining,
+until real save data has actually arrived, rather than flashing zeros that
+look like real progress.
+
 ## Working agreement (read this first, human or AI)
 
 - **Explain everything simply.** Ethan is building software literacy through
@@ -79,10 +92,15 @@ Battery Collector/
 │   │   ├── BatteryCollision.client.lua   walk through batteries once you're full
 │   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
 │   │   ├── FieldLockDisplay.client.lua   dims a locked field's Pad + sign, per-player
+│   │   ├── StatusPanel.client.lua        always-on HUD: bag fullness, actual Cash/sec,
+│   │   │                                   power reserve time, next field milestone
 │   │   └── ShopUI.client.lua             the three upgrade shop panels (built entirely in code)
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    single source of truth for the 2 level upgrades' costs/effects
-│       ├── GPUs.lua        single source of truth for the GPU catalog, space tiers, and slot price
+│       ├── GPUs.lua        single source of truth for the GPU catalog, space tiers, slot
+│       │                     price, and the shared rigTotals() helper (Cash/sec + power
+│       │                     draw for a rig -- used by the server's payout loop AND the
+│       │                     status panel, so they can never disagree)
 │       └── Fields.lua      single source of truth for the 4 fields' names + battery spawn mix
 ├── Models/                 reference art (battery renders used to build the 3-D models)
 └── Prompts/                the AI prompts used to generate the model and image references

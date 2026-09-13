@@ -37,18 +37,16 @@ local billboard = sign and sign:WaitForChild("Billboard", 5)
 local statusLabel = billboard and billboard:WaitForChild("Status", 5)
 local powerLabel = billboard and billboard:WaitForChild("PowerDraw", 5)
 
--- Sum the powerDraw of every GPU installed in our unlocked slots.
+-- Sum the powerDraw of every GPU installed in our unlocked slots. The
+-- actual summing is GPUs.rigTotals (shared with DataCenter.server.lua's own
+-- payout math and StatusPanel.client.lua's HUD), so this sign can never show
+-- a number that disagrees with what the server is actually doing.
 local function totalPowerDraw()
 	local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 0
-	local total = 0
-	for i = 1, unlocked do
-		local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
-		local gpu = id ~= "" and GPUs.get(id)
-		if gpu then
-			total += gpu.powerDraw
-		end
-	end
-	return total
+	local _, powerDraw = GPUs.rigTotals(unlocked, function(i)
+		return LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
+	end)
+	return powerDraw
 end
 
 local function render()
