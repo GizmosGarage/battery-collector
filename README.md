@@ -43,16 +43,15 @@ batteries there still spawn normally, you just can't collect them yet.
   to GitHub automatically** once it's built and tested — no need to ask first.
   `github.com/GizmosGarage/battery-collector`, branch `main`. No attribution
   lines in commit messages.
-- **[CHANGELOG.md](CHANGELOG.md) is Ethan's personal devlog, not onboarding
-  material.** After every change, append a dated entry to it (what changed,
-  why, which files, what concept it taught, how it was tested) — same as
-  always. But **an AI session should never *read* CHANGELOG.md to get
-  oriented** — it's grown to hundreds of lines and would burn a large chunk of
-  context before any work gets done, for a payoff the code already gives you
-  for free. To understand what the game currently does, **read the `src/`
-  files directly** (they're the actual, current behavior — shorter and more
-  reliable than a historical narrative) plus this README. Write to the
-  CHANGELOG; don't read from it.
+- **Write a useful commit message for each completed change.** Use a short,
+  specific subject describing the result. In the body, explain why the change
+  was needed and how it was verified; mention any important limitations or
+  learning points when relevant. For small changes, keep this brief. Commit
+  only files belonging to that change, then push to the GitHub repo above so
+  Git history records both the change and its reasoning.
+- **To understand the current game, read this README and the `src/` files
+  directly.** Keep this README current when behavior, setup, or working
+  instructions change; use Git history to understand past changes.
 - **The `Scripts/` folder of old numbered snapshots is retired** (removed
   2026-09-10). `git log` is the code history now — don't recreate that pattern.
 - **World geometry (the battery models, the Data Center, the Shop platform)
@@ -66,7 +65,6 @@ Battery Collector/
 ├── default.project.json   Rojo's map: which folder goes to which Roblox service
 ├── .gitignore              files Git should ignore (mainly the .rbxl place file)
 ├── README.md               this file
-├── CHANGELOG.md            Ethan's devlog — APPEND after every change, don't read it to get oriented
 ├── src/                    the live source code — edit these files
 │   ├── server/             → ServerScriptService
 │   │   ├── PlayerData.lua              saves/loads progress (DataStores) -- see its own header comment
@@ -111,7 +109,8 @@ changes into the same Studio place, and would fight each other):
 2. In Roblox Studio: **Plugins** → **Rojo** → **Connect**.
 3. Edit the `.lua` files in `src/` with VS Code. Every save updates Studio
    instantly.
-4. Commit when something works: `git add -A && git commit -m "..." && git push`.
+4. Once a change is verified, stage its files with `git add <files>`, run
+   `git commit` to write a useful message as described above, then `git push`.
 5. `Ctrl+C` the Rojo window when done.
 
 **B) An AI assistant (e.g. Claude Code), editing live via the Roblox Studio
