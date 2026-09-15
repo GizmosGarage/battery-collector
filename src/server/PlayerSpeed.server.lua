@@ -33,9 +33,16 @@ local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local Fields = require(ReplicatedStorage:WaitForChild("Fields"))
 
 -- ============================ CONFIG ============================
-local MAX_WALKSPEED    = 60   -- upper limit on TRUE speed, so it stays controllable
 local NORMAL_WALKSPEED = 16   -- Roblox's own default WalkSpeed -- flat, never upgraded
 -- ==============================================================
+
+-- The top TRUE speed the Speed upgrade can ever reach -- read straight off
+-- Upgrades.lua's own `top` value (studs/second at Speed's maxLevel) instead
+-- of a second hard-coded copy of 60, so this script and the shop can never
+-- disagree about what "top speed" means. Since Shop.server.lua already
+-- refuses to sell past maxLevel, Upgrades.effect can never actually exceed
+-- this -- the math.min below is just a harmless backstop.
+local MAX_WALKSPEED = Upgrades.effect("Speed", Upgrades.defs.Speed.maxLevel)
 
 -- Characters spawn off every field (see Workspace.SpawnLocation), so start
 -- them at NORMAL speed, not a frame of TRUE speed before this script catches them.

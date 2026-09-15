@@ -118,10 +118,12 @@ local function setupPlayer(player)
 
 	-- Levels: start every upgrade at its SAVED level, or 0 for one that
 	-- doesn't exist yet in an older save (e.g. a brand-new upgrade added
-	-- since this player last played).
+	-- since this player last played). Also clamp down to maxLevel, in case
+	-- this save predates Upgrades.lua ever HAVING one -- Speed/Capacity used
+	-- to be buyable forever, so an old save could easily sit well past 6.
 	local lv = {}
-	for id in Upgrades.defs do
-		lv[id] = data.levels[id] or 0
+	for id, def in Upgrades.defs do
+		lv[id] = math.min(data.levels[id] or 0, def.maxLevel)
 	end
 	levels[player] = lv
 	publishLevels(player)
@@ -209,13 +211,18 @@ end
 -- ---------- level upgrades (Speed, Capacity) ----------
 -- A purchase request from a client. `id` is whatever the client sent -- distrust it.
 buyEvent.OnServerEvent:Connect(function(player, id)
-	if not Upgrades.defs[id] then
+	local def = Upgrades.defs[id]
+	if not def then
 		return   -- not a real upgrade id
 	end
 
 	local lv = levels[player]
 	if not lv then
 		return
+	end
+
+	if lv[id] >= def.maxLevel then
+		return   -- already at the top level -- nothing left to buy
 	end
 
 	local cost = Upgrades.cost(id, lv[id])

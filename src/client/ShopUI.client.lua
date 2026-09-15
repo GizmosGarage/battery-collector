@@ -519,13 +519,19 @@ local function buildShopPanel(shopDef, padName)
 
 		for id, row in rows do
 			local level = LocalPlayer:GetAttribute(id .. "Level") or 0
-			local cost = Upgrades.cost(id, level)
-			local now = Upgrades.formatEffect(id, Upgrades.effect(id, level))
-			local nextt = Upgrades.formatEffect(id, Upgrades.effect(id, level + 1))
 			local def = Upgrades.defs[id]
+			local now = Upgrades.formatEffect(id, Upgrades.effect(id, level))
 
-			row.info.Text = string.format("%s  (lvl %d)\n%s  →  %s", def.name, level, now, nextt)
-			setButtonState(row.buy, cash >= cost, "Buy  $" .. cost)
+			if level >= def.maxLevel then
+				-- Topped out -- nothing left to preview or buy.
+				row.info.Text = string.format("%s  (lvl %d/%d -- MAX)\n%s", def.name, level, def.maxLevel, now)
+				setButtonState(row.buy, false, "MAX")
+			else
+				local cost = Upgrades.cost(id, level)
+				local nextt = Upgrades.formatEffect(id, Upgrades.effect(id, level + 1))
+				row.info.Text = string.format("%s  (lvl %d/%d)\n%s  →  %s", def.name, level, def.maxLevel, now, nextt)
+				setButtonState(row.buy, cash >= cost, "Buy  $" .. cost)
+			end
 		end
 
 		if refreshSlots then

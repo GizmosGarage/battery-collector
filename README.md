@@ -9,8 +9,9 @@ bigger and are worth more, but vanish faster if you don't rush them) →
 carrying capacity is limited, so you decide when to head back → dump your
 batteries at the AI Data Center, which banks every mAh you dump as a power
 reserve (1:1 — dumping has no upgrade of its own) and burns through it every
-second to pay you Cash → spend Cash at the Player Shop (Speed, Capacity) to
-collect better, at the GPU Shop to cash out better, or at the Data Center
+second to pay you Cash → spend Cash at the Player Shop (Speed, Capacity —
+6 levels each, topping out at 60 spd and 64 batteries) to collect better,
+at the GPU Shop to cash out better, or at the Data Center
 Shop to make room for more GPUs. Three separate purchases, three separate
 purposes: **space** (Data Center Shop — Starter Room/Small Server
 Room/Server Hall/Data Center Floor, each pricier tier just raising how many

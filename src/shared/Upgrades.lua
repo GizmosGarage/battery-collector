@@ -6,7 +6,20 @@
 	PlayerSpeed, BatterySpawner) and the client (ShopUI) require this, so the
 	numbers can never disagree.
 
-	Levels are 0-based. Level 0 = the base value, no purchases made.
+	Levels are 0-based. Level 0 = the base value, no purchases made. Both
+	Speed and Capacity now stop at `maxLevel` (6) -- Shop.server.lua refuses
+	a purchase past it, and ShopUI.client.lua shows "MAX" instead of a price
+	once you're there.
+
+	Rather than hand-typing what each of the 6 levels is worth, each def
+	gives `base` (level 0) and `top` (the value AT maxLevel), and `perLevel`
+	is worked out below as a straight line between them -- change `top` or
+	`maxLevel` later and the 6 steps stay evenly spaced automatically,
+	always landing EXACTLY on `top` at the last level, instead of drifting
+	off it the way a hand-picked `perLevel` could. Speed's `top` (60) is the
+	same "top speed" PlayerSpeed.server.lua clamps to -- it reads that value
+	back out of here instead of hard-coding its own copy of 60, so the two
+	can never disagree about what "top speed" means.
 
 	Speed and Capacity make YOU better at collecting. Cash-per-second used to
 	be a level here too (and dumping used to have its own Power Conversion
@@ -60,31 +73,56 @@ Upgrades.defs = {
 		-- PlayerSpeed.server.lua). Off the field you're always at Roblox's
 		-- flat default (16), no matter this upgrade's level.
 		base = 4,        -- studs/second at level 0 (Roblox default is 16 -- this is a slow trudge)
-		perLevel = 1.5,
+		maxLevel = 6,
+		top = 60,        -- studs/second at maxLevel -- PlayerSpeed.server.lua's own speed cap
 		unit = " spd",
 		decimal = true,  -- show one decimal place
 		baseCost = 50,   -- Cash to go from level 0 -> 1
-		growth = 1.5,    -- cost multiplies by this each level (exponential)
+		growth = 3,      -- cost multiplies by this each level (exponential) -- only 6
+		                 -- levels exist now, so this needs to climb faster than the
+		                 -- old 1.5 did to still land somewhere meaningful by the top
 	},
 
 	Capacity = {
 		name = "Batteries you can carry",
 		base = 5,        -- battery SLOTS at level 0, regardless of size
-		perLevel = 1,
+		maxLevel = 6,
+		top = 64,        -- battery SLOTS at maxLevel
 		unit = "",
 		baseCost = 50,
-		growth = 1.5,
+		growth = 3,
 	},
 }
+
+-- Fill in `perLevel` for every def -- a straight line from `base` (level 0)
+-- to `top` (level `maxLevel`), so nobody has to hand-calculate a fraction
+-- like "59 batteries spread over 6 levels" and risk it not landing exactly
+-- on `top`. See the header comment for why this beats a hand-picked number.
+for _, d in Upgrades.defs do
+	d.perLevel = (d.top - d.base) / d.maxLevel
+end
 
 -- The gameplay value this upgrade produces at a given level.
 function Upgrades.effect(id, level)
 	local d = Upgrades.defs[id]
-	return d.base + level * d.perLevel
+	local value = d.base + level * d.perLevel
+
+	if d.decimal then
+		return value
+	end
+
+	-- Whole-number upgrades (Capacity) round to the nearest integer.
+	-- perLevel above is rarely a round number itself (59/6 batteries, here)
+	-- so without this, most levels would land on a fraction of a battery --
+	-- meaningless to carry, and formatEffect's "%d" below would flat-out
+	-- error on a non-whole number.
+	return math.round(value)
 end
 
 -- The Cash price to buy the NEXT level (i.e. to go from `level` to `level + 1`).
 -- Grows exponentially: baseCost, baseCost*growth, baseCost*growth^2, ...
+-- (Doesn't itself stop at maxLevel -- Shop.server.lua is what refuses a
+-- purchase once a player's already there.)
 function Upgrades.cost(id, level)
 	local d = Upgrades.defs[id]
 	return math.floor(d.baseCost * (d.growth ^ level))
