@@ -62,7 +62,7 @@ local TOP_BLOCK_HEIGHT = 22 + GAP + 16
 -- this one routinely needs to scroll.
 local MAX_PANEL_HEIGHT = 560
 
-local PROXIMITY_RADIUS = 10   -- studs -- close enough to a rack to see its panel
+local PROXIMITY_RADIUS = 6   -- studs -- close enough to a rack to see its panel
 -- ==============================================================
 
 -- The racks (and the slots each one owns) are Workspace content that
