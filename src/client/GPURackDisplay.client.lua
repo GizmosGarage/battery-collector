@@ -69,10 +69,17 @@ for _, rack in racks do
 	end
 end
 
--- Cache each slot's BaseParts once, together with the look they should
--- have WHEN SHOWN (their normal, as-built Transparency/CanCollide) -- so
--- every later refresh is just flipping between "as built" and "hidden,"
--- never re-scanning the model.
+-- Cache each slot's visible pieces once, together with the look they
+-- should have WHEN SHOWN (their normal, as-built Transparency/CanCollide)
+-- -- so every later refresh is just flipping between "as built" and
+-- "hidden," never re-scanning the model. TWO kinds of thing need hiding,
+-- not just one: the BaseParts themselves (the card body, fan, port
+-- connectors), AND any Decal/Texture stuck to one of those parts' faces
+-- (the circuit-board graphic on the card) -- a Decal has its OWN
+-- Transparency, completely separate from its part's, so making the part
+-- invisible alone leaves its decal floating there fully visible. Only
+-- BaseParts have CanCollide, so `canCollide` stays nil for a Decal/Texture
+-- entry -- setSlotVisible below skips that property for those.
 local slotParts = {}
 for i, model in slotModels do
 	local parts = {}
@@ -82,6 +89,11 @@ for i, model in slotModels do
 				part = part,
 				transparency = part.Transparency,
 				canCollide = part.CanCollide,
+			})
+		elseif part:IsA("Decal") or part:IsA("Texture") then
+			table.insert(parts, {
+				part = part,
+				transparency = part.Transparency,
 			})
 		end
 	end
@@ -94,7 +106,9 @@ end
 local function setSlotVisible(i, visible)
 	for _, entry in slotParts[i] do
 		entry.part.Transparency = visible and entry.transparency or 1
-		entry.part.CanCollide = visible and entry.canCollide or false
+		if entry.canCollide ~= nil then
+			entry.part.CanCollide = visible and entry.canCollide or false
+		end
 	end
 end
 
