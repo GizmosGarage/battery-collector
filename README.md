@@ -8,7 +8,8 @@ Players collect batteries, deposit them to power an AI data center, and
 spend its earnings on collection upgrades, GPUs, slots, and additional
 space. Better fields unlock through lifetime earnings. Cash, upgrades, GPU
 equipment, and deposited power persist between sessions; carried batteries
-do not.
+do not. Equipped GPUs also show up physically, one card per occupied slot,
+on the Server_Racks next to the data center.
 
 The status panel shows bag fullness, current income, remaining power time,
 and progress toward the next field.
@@ -52,6 +53,7 @@ Battery Collector/
 │   │   ├── DataCenterDisplay.client.lua  personal data center status display
 │   │   ├── FieldLockDisplay.client.lua   personal field lock displays
 │   │   ├── StatusPanel.client.lua        always-visible gameplay status
+│   │   ├── GPURackDisplay.client.lua     shows equipped GPUs on the Server_Racks
 │   │   └── ShopUI.client.lua             shop panels
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    upgrade costs, effects, and shop definitions
@@ -101,6 +103,13 @@ source code and reference art cannot restore the complete world. It contains:
 - `Workspace.Field_Green`, `Workspace.Field_Yellow`, `Workspace.Field_Blue`,
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
+- `Workspace.Server_Rack` (one per 4 equipment slots — currently 2, for the
+  8 slots the Starter Room + Small Server Room space tiers allow) — each a
+  `MeshPart` holding its own 4 GPU-card `Model`s, named bottom to top
+  `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
+  GPURackDisplay.client.lua reads however many racks actually exist, in Z
+  order, so adding another (same naming, further along +Z) to cover a
+  bigger space tier needs no code change.
 
 ## Requirements
 
