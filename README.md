@@ -53,7 +53,7 @@ Battery Collector/
 │   ├── client/             → StarterPlayer > StarterPlayerScripts
 │   │   ├── BatterySpin.client.lua        battery animation
 │   │   ├── BatteryGlow.client.lua        rarity effects
-│   │   ├── BatteryCollision.client.lua   allows walking through batteries when full
+│   │   ├── BatteryCollision.client.lua   lets players run straight through batteries
 │   │   ├── DataCenterDisplay.client.lua  personal data center status display
 │   │   ├── FieldLockDisplay.client.lua   personal field lock displays
 │   │   ├── StatusPanel.client.lua        always-visible gameplay status
