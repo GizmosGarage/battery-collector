@@ -4,48 +4,14 @@ A Roblox game, and Ethan's project for **learning software development from
 scratch** — every change is made one small step at a time, explained as it
 happens, so the "why" sticks, not just the "what."
 
-**The game so far:** walk a field collecting batteries (rarer sizes glow
-bigger and are worth more, but vanish faster if you don't rush them) →
-carrying capacity is limited, so you decide when to head back → dump your
-batteries at the AI Data Center, which banks every mAh you dump as a power
-reserve (1:1 — dumping has no upgrade of its own) and burns through it every
-second to pay you Cash → spend Cash at the Player Shop (Speed, Capacity —
-6 levels each, topping out at 60 spd and 64 batteries) to collect better,
-at the GPU Shop to cash out better, or at the Data Center
-Shop to make room for more GPUs. Three separate purchases, three separate
-purposes: **space** (Data Center Shop — Starter Room/Small Server
-Room/Server Hall/Data Center Floor, each pricier tier just raising how many
-GPU **slots** could ever fit), **slots** themselves (also the Data Center
-Shop — the first is free, every one after costs a flat $100, up to your
-current space's max), and the **GPUs** that actually go in those slots
-(GPU Shop — a 5-tier catalog where a better card pays more but also draws
-more power). Buying more space never hands you a slot, and a slot sits
-empty until you buy a GPU for it — so the real choice is filling more
-(cheap) slots with cheap GPUs, or spending more on efficient GPUs that fit
-in the space you've already got. Every GPU you buy is yours to keep — a
-full rig just means the new one waits in storage — and moving one between a
-slot and storage is free, so replacing a cheap card with a better one is
-unequip (at the Data Center Shop), then equip (at the GPU Shop), any time.
-Progress now **persists across sessions**: Cash, upgrade levels, the whole
-GPU rig (space tier, slots, storage), and the banked power reserve are all
-saved and restored — only whatever you're actively carrying resets when you
-rejoin. Reaching Yellow/Blue/Red also takes **lifetime Cash earned** (never
-decreases, even as you spend) past that field's threshold — locked, a
-field's Pad shows dimmed grey with a sign explaining what's needed;
-batteries there still spawn normally, you just can't collect them yet.
+Players collect batteries, deposit them to power an AI data center, and
+spend its earnings on collection upgrades, GPUs, slots, and additional
+space. Better fields unlock through lifetime earnings. Cash, upgrades, GPU
+equipment, and deposited power persist between sessions; carried batteries
+do not.
 
-**An always-on status panel** sits in the top-left corner the whole time
-you're playing (`StatusPanel.client.lua`), out of the way of the leaderstats
-scoreboard, the shop panels, and mobile's on-screen controls. It shows four
-things at a glance: your battery bag's fullness (carried / capacity), your
-data center's ACTUAL Cash/sec (zero, with a plain-English reason like
-"Equip a GPU" or "Collect and deposit batteries," whenever it can't run —
-never a number you're not really earning), how long the banked power
-reserve will keep the current rig running, and a progress bar toward the
-next locked field (lifetime Cash earned / needed — spending never moves
-this backwards). It shows "Loading..." for a moment right after joining,
-until real save data has actually arrived, rather than flashing zeros that
-look like real progress.
+The status panel shows bag fullness, current income, remaining power time,
+and progress toward the next field.
 
 ## Working agreement (read this first, human or AI)
 
@@ -55,56 +21,44 @@ look like real progress.
   programming background; define terms the first time they come up.
 - **`src/` is the source of truth, and every change gets committed and pushed
   to GitHub automatically** once it's built and tested — no need to ask first.
-  `github.com/GizmosGarage/battery-collector`, branch `main`. No attribution
-  lines in commit messages.
-- **Write a useful commit message for each completed change.** Use a short,
-  specific subject describing the result. In the body, explain why the change
-  was needed and how it was verified; mention any important limitations or
-  learning points when relevant. For small changes, keep this brief. Commit
-  only files belonging to that change, then push to the GitHub repo above so
-  Git history records both the change and its reasoning.
+  Use [GizmosGarage/battery-collector](https://github.com/GizmosGarage/battery-collector),
+  branch `main`. Commit only files belonging to the change. Write a short,
+  specific subject describing the result, with a brief body explaining why
+  and how it was verified; include important limitations or learning points
+  when relevant. No attribution lines in commit messages.
 - **To understand the current game, read this README and the `src/` files
   directly.** Keep this README current when behavior, setup, or working
   instructions change; use Git history to understand past changes.
-- **The `Scripts/` folder of old numbered snapshots is retired** (removed
-  2026-09-10). `git log` is the code history now — don't recreate that pattern.
-- **World geometry (the battery models, the Data Center, the Shop platform)
-  lives only in the `.rbxl` place file, not in this repo** — see "What isn't
-  tracked" below. Only the code is version-controlled.
 
 ## Folder layout
 
 ```
 Battery Collector/
-├── default.project.json   Rojo's map: which folder goes to which Roblox service
-├── .gitignore              files Git should ignore (mainly the .rbxl place file)
+├── default.project.json   Rojo's folder-to-service map
+├── .gitignore              files excluded from Git
 ├── README.md               this file
 ├── src/                    the live source code — edit these files
 │   ├── server/             → ServerScriptService
-│   │   ├── PlayerData.lua              saves/loads progress (DataStores) -- see its own header comment
-│   │   ├── PlayerSetup.server.lua      gives each player their leaderstats (Batteries, mAh, Cash)
-│   │   ├── BatterySpawner.server.lua   spawns/despawns batteries, handles collection + carry cap
-│   │   ├── PlayerSpeed.server.lua      applies the Speed upgrade to walk speed
-│   │   ├── DataCenter.server.lua       the dump-and-burn power/Cash loop
-│   │   └── Shop.server.lua             owns upgrade levels, validates purchases
+│   │   ├── PlayerData.lua              saves and loads progress
+│   │   ├── PlayerSetup.server.lua      initializes player stats
+│   │   ├── BatterySpawner.server.lua   spawns batteries and handles collection
+│   │   ├── PlayerSpeed.server.lua      applies movement speed
+│   │   ├── DataCenter.server.lua       consumes power and pays Cash
+│   │   └── Shop.server.lua             validates purchases and manages equipment
 │   ├── client/             → StarterPlayer > StarterPlayerScripts
-│   │   ├── BatterySpin.client.lua        battery lean + spin animation
-│   │   ├── BatteryGlow.client.lua        rarity glow (bigger/brighter = rarer)
-│   │   ├── BatteryCollision.client.lua   walk through batteries once you're full
-│   │   ├── DataCenterDisplay.client.lua  the Data Center pad/sign, per-player
-│   │   ├── FieldLockDisplay.client.lua   dims a locked field's Pad + sign, per-player
-│   │   ├── StatusPanel.client.lua        always-on HUD: bag fullness, actual Cash/sec,
-│   │   │                                   power reserve time, next field milestone
-│   │   └── ShopUI.client.lua             the three upgrade shop panels (built entirely in code)
+│   │   ├── BatterySpin.client.lua        battery animation
+│   │   ├── BatteryGlow.client.lua        rarity effects
+│   │   ├── BatteryCollision.client.lua   allows walking through batteries when full
+│   │   ├── DataCenterDisplay.client.lua  personal data center status display
+│   │   ├── FieldLockDisplay.client.lua   personal field lock displays
+│   │   ├── StatusPanel.client.lua        always-visible gameplay status
+│   │   └── ShopUI.client.lua             shop panels
 │   └── shared/             → ReplicatedStorage
-│       ├── Upgrades.lua    single source of truth for the 2 level upgrades' costs/effects
-│       ├── GPUs.lua        single source of truth for the GPU catalog, space tiers, slot
-│       │                     price, and the shared rigTotals() helper (Cash/sec + power
-│       │                     draw for a rig -- used by the server's payout loop AND the
-│       │                     status panel, so they can never disagree)
-│       └── Fields.lua      single source of truth for the 4 fields' names + battery spawn mix
-├── Models/                 reference art (battery renders used to build the 3-D models)
-└── Prompts/                the AI prompts used to generate the model and image references
+│       ├── Upgrades.lua    upgrade costs, effects, and shop definitions
+│       ├── GPUs.lua        GPU catalog, space, slots, and output calculations
+│       └── Fields.lua      field names, spawn mixes, and unlock requirements
+├── Models/                 battery reference art
+└── Prompts/                model and image generation prompts
 ```
 
 ### How filenames map to Roblox
@@ -114,62 +68,39 @@ Battery Collector/
 | `.server.lua`    | `Script` (runs on the server) |
 | `.client.lua`    | `LocalScript` (runs on each player's machine) |
 | `.lua`           | `ModuleScript` (shared library code) |
-| `init.lua` in a folder | that folder itself becomes a `ModuleScript` |
 
 ## Working on the game
 
-Two ways this happens, and they must not run at the same time (both push
-changes into the same Studio place, and would fight each other):
+Use one of these workflows at a time; both write to the same Studio place.
 
 **A) You, editing by hand:**
 
-1. Open a terminal in this folder and run `rojo serve`. Leave it open — it
-   prints something like `Rojo server listening on port 34872`.
+1. Open a terminal in this folder and run `rojo serve`. Leave it running.
 2. In Roblox Studio: **Plugins** → **Rojo** → **Connect**.
 3. Edit the `.lua` files in `src/` with VS Code. Every save updates Studio
    instantly.
-4. Once a change is verified, stage its files with `git add <files>`, run
-   `git commit` to write a useful message as described above, then `git push`.
+4. Verify the change, then use `git add <files>`, `git commit`, and `git push`
+   following the working agreement above.
 5. `Ctrl+C` the Rojo window when done.
 
-**B) An AI assistant (e.g. Claude Code), editing live via the Roblox Studio
-MCP connection:** it edits the `src/` files *and* mirrors the same change into
-the already-open Studio session directly (not through Rojo), so you can test
-immediately without `rojo serve` running. It commits and pushes automatically
-once a change is built and tested. **If you want to jump in and edit by hand
-while an AI session is active, say so first** — don't run `rojo serve` +
-Connect at the same time as it's working.
+**B) An AI assistant with a Roblox Studio MCP connection:** edit `src/` and
+mirror the changes directly into the open Studio session for testing.
+Keep Rojo disconnected during this workflow and coordinate before switching
+to manual editing.
 
 ## What isn't tracked here
 
-The `.rbxl` place file itself is deliberately **not** in Git — it's one big
-binary blob Git can't diff or merge. That means the world geometry and these
-specific things live *only* in the place file, not this repo:
+The Roblox place file is **not tracked in Git**. Back it up separately; the
+source code and reference art cannot restore the complete world. It contains:
+
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter` (Pad + floating sign) and the three shop platforms,
-  `Workspace.Shop_Player` (Speed, Capacity), `Workspace.Shop_GPUs` (the GPU
-  catalog -- buy/equip), and `Workspace.Shop_DataCenter` (expand the data
-  center's space, buy a slot, see what's installed, unequip) -- each Pad +
-  sign, same shape as the dump-off Data Center's; `Upgrades.lua`'s
-  `Upgrades.shops` records which LEVEL upgrades (and which GPU section, if
-  any) belong to which shop, and `GPUs.lua` owns the GPU catalog, the space
-  tiers, and the flat slot price shown across the two GPU shops
-- The four raised battery fields — `Workspace.Field_Green` (smallest, AAA
-  only), `Field_Yellow` (+ AA), `Field_Blue` (+ C), `Field_Red` (biggest, +
-  D — this is the original single field, just recolored). Each is a `Model`
-  with one `Pad` part; `Fields.lua` is the only place their NAMES, battery
-  spawn mix, and unlock requirement are recorded, and `BatterySpawner.server.lua`
-  reads each Pad's live size/position, so resizing or moving one in Studio
-  needs no code change. `Field_Yellow`/`Field_Blue`/`Field_Red` also each
-  have a `Sign` (Pad + floating sign, same shape as the Data Center's) that
-  `FieldLockDisplay.client.lua` dims/lights up per-player -- `Field_Green`
-  has no lock and no sign at all
-
-If the place file is ever lost, these have to be rebuilt by hand (the
-`Prompts/` and `Models/` folders document how the original battery look was
-generated, as a starting point).
+- `Workspace.DataCenter`, `Workspace.Shop_Player`, `Workspace.Shop_GPUs`,
+  and `Workspace.Shop_DataCenter` — each with a `Pad` and floating sign
+- `Workspace.Field_Green`, `Workspace.Field_Yellow`, `Workspace.Field_Blue`,
+  and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
+  Red also have a `Sign` for their lock display. Green has no sign.
 
 ## Requirements
 
@@ -177,10 +108,6 @@ generated, as a starting point).
 - Git
 - Roblox Studio
 - To test saving/loading progress **in Studio**: Game Settings → Security →
-  **Enable Studio Access to API Services** must be on (this place already
-  has it on, confirmed 2026-09-12 -- a Play session now genuinely saves and
-  reloads real progress). With it off, `PlayerData.lua`'s DataStore calls
-  fail (loudly, in the Output window) and the game falls back to fresh,
-  unsaved defaults every time instead -- intentional, so a Studio playtest
-  never just breaks, only stops persisting. Nothing extra is needed once
-  the game is published — DataStores just work there.
+  **Enable Studio Access to API Services** must be on. If loading fails,
+  the session uses fresh defaults without saving over existing progress;
+  check Studio's Output for warnings.
