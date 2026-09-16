@@ -35,12 +35,17 @@ local GPUs = {}
 --                 second Starter, costs this)
 --   cashPerSec -- Cash paid per second this GPU has enough power to run
 --   powerDraw  -- mAh/sec it costs to keep this GPU running
+--   color      -- this GPU's own shade, brighter/richer the higher the
+--                 tier -- GPURackDisplay.client.lua paints the physical
+--                 card's front panel (the bracket the DVI-D/DisplayPort/
+--                 HDMI ports sit in) this color, so a glance at a rack
+--                 tells you which tier is installed in each slot
 GPUs.catalog = {
-	{ id = "Starter",    name = "Starter GPU",        price = 100,    cashPerSec = 5,   powerDraw = 40 },
-	{ id = "Basic",      name = "Basic AI GPU",       price = 1500,   cashPerSec = 12,  powerDraw = 80 },
-	{ id = "Advanced",   name = "Advanced AI GPU",    price = 12500,  cashPerSec = 28,  powerDraw = 160 },
-	{ id = "DataCenter", name = "Data Center GPU",    price = 100000, cashPerSec = 65,  powerDraw = 320 },
-	{ id = "Neural",     name = "Neural Accelerator", price = 750000, cashPerSec = 150, powerDraw = 640 },
+	{ id = "Starter",    name = "Starter GPU",        price = 100,    cashPerSec = 5,   powerDraw = 40,  color = Color3.fromRGB(155, 163, 175) },
+	{ id = "Basic",      name = "Basic AI GPU",       price = 1500,   cashPerSec = 12,  powerDraw = 80,  color = Color3.fromRGB(46, 190, 115) },
+	{ id = "Advanced",   name = "Advanced AI GPU",    price = 12500,  cashPerSec = 28,  powerDraw = 160, color = Color3.fromRGB(45, 140, 245) },
+	{ id = "DataCenter", name = "Data Center GPU",    price = 100000, cashPerSec = 65,  powerDraw = 320, color = Color3.fromRGB(165, 85, 235) },
+	{ id = "Neural",     name = "Neural Accelerator", price = 750000, cashPerSec = 150, powerDraw = 640, color = Color3.fromRGB(245, 185, 45) },
 }
 
 -- Look a catalog entry up by id -- what every other script actually does

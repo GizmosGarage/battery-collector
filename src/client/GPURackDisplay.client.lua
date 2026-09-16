@@ -22,15 +22,21 @@
 	Fields.lua uses for Pad sizes instead of hard-coding them.
 
 	Slot N is shown exactly when this player's "Slot<N>GPU" attribute
-	(published by Shop.server.lua) is non-empty -- which GPU TYPE is
-	installed doesn't matter, only whether the slot is filled, so a Starter
-	and a Neural Accelerator look identical on the rack. A LOCKED slot (past
+	(published by Shop.server.lua) is non-empty -- a LOCKED slot (past
 	however many this player has actually unlocked) publishes "" too, same
 	as an unlocked-but-empty one, so it's already handled the same way --
 	no GPUs equipped anywhere shows a completely empty rack.
+
+	WHICH GPU type is installed does matter for one thing: each card's
+	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
+	gets painted that GPU's own color (GPUs.lua's catalog), so a glance at
+	a rack shows which tier sits in each slot without opening its panel.
 --]]
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -81,6 +87,7 @@ end
 -- BaseParts have CanCollide, so `canCollide` stays nil for a Decal/Texture
 -- entry -- setSlotVisible below skips that property for those.
 local slotParts = {}
+local frontPanels = {}   -- i -> that slot's FrontPanel BasePart, for the color-by-GPU-type below
 for i, model in slotModels do
 	local parts = {}
 	for _, part in model:GetDescendants() do
@@ -98,6 +105,7 @@ for i, model in slotModels do
 		end
 	end
 	slotParts[i] = parts
+	frontPanels[i] = model:FindFirstChild("FrontPanel")
 end
 
 -- Hidden = fully invisible AND non-solid (so an empty slot's card can't be
@@ -121,7 +129,13 @@ end
 local function render()
 	for i in slotModels do
 		local gpuId = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
-		setSlotVisible(i, gpuId ~= nil and gpuId ~= "")
+		local filled = gpuId ~= nil and gpuId ~= ""
+		setSlotVisible(i, filled)
+
+		local gpu = filled and GPUs.get(gpuId)
+		if gpu and frontPanels[i] then
+			frontPanels[i].Color = gpu.color
+		end
 	end
 end
 
