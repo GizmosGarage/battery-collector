@@ -31,20 +31,21 @@
 local Upgrades = {}
 
 -- The shop is THREE platforms -- Speed/Capacity make YOU better at
--- collecting; the GPU catalog and the data center's space/slots (see
--- GPUs.lua) make the DATA CENTER better at cashing out, split across their
--- own two pads so neither panel has to cram a catalog together with the
--- space/slot rows into one scroll. Each entry lives on its own pad (see
--- ShopUI.client.lua's SHOP_PAD_NAMES, in this same order). `title` is what
--- that pad's floating sign says. `gpuCatalogSection`/`slotsSection` tell
--- ShopUI to also build the GPU catalog rows, or the space/slot-unlock +
--- per-slot rows, on that platform -- this module doesn't need to know
--- anything about GPUs itself, just that a shop has room for one of those
--- sections.
+-- collecting; the GPU catalog and the data center's space (see GPUs.lua)
+-- make the DATA CENTER better at cashing out, split across their own two
+-- pads. Each entry lives on its own pad (see ShopUI.client.lua's
+-- SHOP_PAD_NAMES, in this same order). `title` is what that pad's
+-- floating sign says. `gpuCatalogSection`/`spaceSection` tell ShopUI to
+-- also build the GPU catalog rows, or the single space-upgrade row, on
+-- that platform -- this module doesn't need to know anything about GPUs
+-- itself, just that a shop has room for one of those sections. Equipping
+-- and unequipping GPUs happen elsewhere entirely now -- at whichever
+-- physical Server_Rack a player walks up to (RackShopUI.client.lua), not
+-- on either of these pads.
 Upgrades.shops = {
 	{ title = "PLAYER SHOP",       ids = { "Speed", "Capacity" } },
 	{ title = "GPU SHOP",          ids = {}, gpuCatalogSection = true },
-	{ title = "DATA CENTER SHOP",  ids = {}, slotsSection = true },
+	{ title = "DATA CENTER SHOP",  ids = {}, spaceSection = true },
 }
 
 -- Every upgrade id, in canonical order -- derived from Upgrades.shops

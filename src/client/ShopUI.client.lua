@@ -15,46 +15,34 @@
 		                                                       INSTALLED
 		DATA CENTER SHOP  (Workspace.Shop_DataCenter.Pad)  -- expand the data
 		                                                       center's SPACE
-		                                                       (raises how many
-		                                                       slots it could
-		                                                       ever hold), buy
-		                                                       an individual
-		                                                       SLOT within that
-		                                                       space, and see/
-		                                                       unequip whatever's
-		                                                       installed in each
-		                                                       one you have
+		                                                       -- the ONLY
+		                                                       thing this
+		                                                       pad does now;
+		                                                       every slot up
+		                                                       to the new
+		                                                       tier's max
+		                                                       comes free
+		                                                       with it
 
 	Walk onto any pad -- actually onto its footprint, not just near it --
 	and THAT platform's panel appears; walk off and it hides. Standing on
 	one never shows another.
 
 	A shop's normal upgrade rows (Speed/Capacity) show the current effect,
-	the next-level effect, and the Cash cost. The GPU Shop and Data Center
-	Shop each get ONE HALF of the GPU system, split so neither panel has to
-	cram a catalog together with the space/slot rows into one scroll
-	(`shopDef.gpuCatalogSection` / `shopDef.slotsSection`):
-	  - Data Center Shop: a "Data Center Space" row (current tier + an
-	    Expand button for the next one), an "Installed Slots" row (X / the
-	    current tier's max, with a Buy Slot button), then one row PER
-	    INSTALLED slot, showing what's in it with an Unequip button. Space
-	    and slots are two SEPARATE purchases on purpose -- buying more
-	    space only raises the slot ceiling, it doesn't hand you a slot;
-	    every slot past the first still costs its own flat price.
-	  - GPU Shop: one row PER GPU TYPE in the catalog, showing how many you
-	    own (equipped + stored), with a single Buy button -- buying always
-	    lands in storage now; INSTALLING a stored GPU into a specific rack
-	    happens by walking up to that rack (RackShopUI.client.lua), not here.
+	the next-level effect, and the Cash cost.
+	  - Data Center Shop: just ONE row -- current space tier + an Expand
+	    button for the next one (`shopDef.spaceSection`).
+	  - GPU Shop: one row PER GPU TYPE in the catalog (`shopDef.gpuCatalogSection`),
+	    showing how many you own (equipped + stored), with a single Buy
+	    button -- buying always lands in storage; INSTALLING a stored GPU
+	    into a specific rack (or UNEQUIPPING one already there) happens by
+	    walking up to that rack (RackShopUI.client.lua), not on either pad.
 	Both panels read the SAME rig attributes off LocalPlayer, so buying a
-	GPU here shows up everywhere else (Data Center Shop, any rack's panel)
-	the next time you look. Equipping and unequipping are both FREE --
-	together they're how you swap a worse card for a better one: unequip
-	the old at the Data Center Shop, then walk up to a rack and equip the
-	new one into the empty slot.
+	GPU here shows up at every rack's panel the next time you look.
 
 	Buying anything just fires a RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server publishes new attributes
-	(a level, a slot, a GPU, storage), the panel showing them refreshes.
+	(a level, a space tier, a GPU, storage), the panel showing them refreshes.
 
 	The whole GUI is built here in code so it lives in the repo (StarterGui is
 	not part of the Rojo project).
@@ -69,9 +57,7 @@ local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 local buyEvent = ReplicatedStorage:WaitForChild("BuyUpgrade")
 local buySpaceEvent = ReplicatedStorage:WaitForChild("BuyDataCenterSpace")
-local buySlotEvent = ReplicatedStorage:WaitForChild("BuyGPUSlot")
 local buyGPUEvent = ReplicatedStorage:WaitForChild("BuyGPU")
-local unequipGPUEvent = ReplicatedStorage:WaitForChild("UnequipGPU")
 
 local LocalPlayer = Players.LocalPlayer
 local playerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -88,10 +74,11 @@ local ROW_HEIGHT = 74    -- every row, single-button
 local GAP        = 10    -- vertical gap between every stacked item
 
 -- A panel never grows taller than this -- past it, the rows scroll
--- instead. The Data Center Shop's per-slot rows can push well past this
--- as space fills up, which is exactly why it needs to scroll; the Player
--- Shop's 2 rows and the GPU Shop's 5 never get close to the cap, so their
--- panels just stay their natural, shorter height.
+-- instead. None of these three panels come close to the cap anymore
+-- (Player Shop 2 rows, GPU Shop 5, Data Center Shop 1), so it's mostly
+-- future headroom at this point -- kept so a panel that DOES grow tall
+-- later (or a rack's, see RackShopUI.client.lua) degrades gracefully
+-- instead of running off-screen.
 local MAX_PANEL_HEIGHT = 560
 
 -- title + gap + cash line -- the part of the panel that's always visible,
@@ -107,10 +94,9 @@ local SHOP_PAD_NAMES = { "Shop_Player", "Shop_GPUs", "Shop_DataCenter" }
 
 -- A bare row Frame (background + rounded corners) with an info TextLabel
 -- and ONE Buy-style TextButton -- no data binding yet, just the shared
--- look every single-button row (upgrade, slot-unlock, or per-slot
--- Unequip) uses. `onClick` fires when the button's clicked; deciding
--- whether that click should DO anything is the server's job
--- (Shop.server.lua), not this button's.
+-- look every single-button row (an upgrade, or the space row) uses.
+-- `onClick` fires when the button's clicked; deciding whether that click
+-- should DO anything is the server's job (Shop.server.lua), not this button's.
 local function makeRowFrame(panel, order, onClick)
 	local row = Instance.new("Frame")
 	row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
@@ -208,84 +194,33 @@ local function getRigState()
 	}
 end
 
--- DATA CENTER SHOP: a "Data Center Space" row, an "Installed Slots" row,
--- then one row per INSTALLED slot. Returns a `refreshSlots()` function
--- that repaints all of them.
-local function buildSlotsSection(panel, startOrder)
+-- DATA CENTER SHOP: just the ONE "Data Center Space" row -- current tier
+-- + an Expand button for the next one. Every slot up to a tier's max comes
+-- free with it (GPUs.maxSlotsForTier -- see Shop.server.lua); installing
+-- or removing actual GPU hardware happens at a rack now
+-- (RackShopUI.client.lua), not here. Returns a `refreshSpace()` function.
+local function buildSpaceSection(panel, startOrder)
 	local spaceRow = makeRowFrame(panel, startOrder, function()
 		buySpaceEvent:FireServer()
 	end)
 
-	local slotBuyRow = makeRowFrame(panel, startOrder + 1, function()
-		buySlotEvent:FireServer()
-	end)
+	local function refreshSpace()
+		local cash = getCashValue()
+		local tierIndex = LocalPlayer:GetAttribute("SpaceTier") or 1
+		local tier = GPUs.spaceTiers[tierIndex]
+		local nextTier = GPUs.spaceTiers[tierIndex + 1]
 
-	-- One row per INSTALLED slot -- unlike the old fixed 1-4 slot range,
-	-- a space expansion can push this up to 32, so rows are added/removed
-	-- to match instead of a fixed-size array with "Locked" placeholders.
-	-- `#slotRows` IS the row count -- `ensureSlotRowCount` just grows or
-	-- shrinks it to match how many slots are actually unlocked.
-	local slotRows = {}
-	local function ensureSlotRowCount(count)
-		for i = #slotRows + 1, count do
-			slotRows[i] = makeRowFrame(panel, startOrder + 1 + i, function()
-				unequipGPUEvent:FireServer(i)
-			end)
-		end
-		for i = #slotRows, count + 1, -1 do
-			slotRows[i].frame:Destroy()
-			slotRows[i] = nil
-		end
-	end
-
-	local function refreshSlots()
-		local state = getRigState()
-		local tier = GPUs.spaceTiers[state.spaceTier]
-		local nextTier = GPUs.spaceTiers[state.spaceTier + 1]
-
-		-- ---- the "data center space" row ----
-		spaceRow.info.Text = string.format("Data Center Space: %s (%d slots max)", tier.name, tier.maxSlots)
+		spaceRow.info.Text = string.format("Data Center Space: %s (%d slots)", tier.name, tier.maxSlots)
 		if nextTier then
-			setButtonState(spaceRow.buy, state.cash >= nextTier.price, "Expand  $" .. nextTier.price)
+			setButtonState(spaceRow.buy, cash >= nextTier.price, "Expand  $" .. nextTier.price)
 		else
 			setButtonState(spaceRow.buy, false, "Max Space")
 		end
-
-		-- ---- the "installed slots" summary row ----
-		slotBuyRow.info.Text = string.format("Installed Slots: %d / %d", state.unlocked, tier.maxSlots)
-		if state.unlocked >= tier.maxSlots then
-			setButtonState(slotBuyRow.buy, false, "Space Full")
-		else
-			setButtonState(slotBuyRow.buy, state.cash >= GPUs.SLOT_PRICE, "Buy Slot  $" .. GPUs.SLOT_PRICE)
-		end
-
-		-- ---- one row per installed slot: what's in it, and Unequip it ----
-		ensureSlotRowCount(state.unlocked)
-		for i = 1, state.unlocked do
-			local row = slotRows[i]
-			local gpu = state.slotGpuIds[i] and GPUs.get(state.slotGpuIds[i])
-			if gpu then
-				row.info.Text = string.format(
-					"Slot %d: %s\n%d Cash/sec, %d mAh/s power",
-					i, gpu.name, gpu.cashPerSec, gpu.powerDraw
-				)
-				setButtonState(row.buy, true, "Unequip")   -- always free, so always "doable"
-			else
-				row.info.Text = string.format("Slot %d: Empty", i)
-				setButtonState(row.buy, false, "Empty")
-			end
-		end
 	end
 
-	-- Repaint whenever the rig's space or slots (unlocked count, or what's
-	-- in each one) change -- storage doesn't affect anything shown here.
-	LocalPlayer:GetAttributeChangedSignal("SpaceTier"):Connect(refreshSlots)
-	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshSlots)
-	for i = 1, GPUs.MAX_SLOTS do
-		LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(refreshSlots)
-	end
+	LocalPlayer:GetAttributeChangedSignal("SpaceTier"):Connect(refreshSpace)
 
-	return refreshSlots
+	return refreshSpace
 end
 
 -- GPU SHOP: one row per GPU TYPE in the catalog, BUY only now -- equipping
@@ -340,8 +275,8 @@ local function buildGPUCatalogSection(panel, startOrder)
 end
 
 -- Build ONE shop's whole panel -- its own ScreenGui, title, Cash line, one
--- row per id in `shopDef.ids`, and (if `shopDef.slotsSection` or
--- `shopDef.gpuCatalogSection`) that shop's half of the GPU system.
+-- row per id in `shopDef.ids`, and (if `shopDef.spaceSection` or
+-- `shopDef.gpuCatalogSection`) that shop's extra section.
 -- Returns { screen, pad, refresh } for the show/hide loop.
 local function buildShopPanel(shopDef, padName)
 	local pad = workspace:WaitForChild(padName):WaitForChild("Pad")
@@ -409,9 +344,8 @@ local function buildShopPanel(shopDef, padName)
 	-- Resize the panel to fit however tall its rows currently measure --
 	-- capped at MAX_PANEL_HEIGHT, past which the ScrollingFrame scrolls
 	-- instead. Driven by the row layout's OWN measured size (rather than a
-	-- hand-computed one) so a shop whose row COUNT changes during play
-	-- (the Data Center Shop's per-slot rows, as you buy more) resizes
-	-- itself automatically, not just once at startup.
+	-- hand-computed one) so a panel resizes itself automatically if its
+	-- row count or wrapped-text height ever changes, not just once at startup.
 	local function fitPanelHeight()
 		local naturalHeight = 28 + TOP_BLOCK_HEIGHT + GAP + rowsLayout.AbsoluteContentSize.Y
 		panel.Size = UDim2.fromOffset(400, math.min(naturalHeight, MAX_PANEL_HEIGHT))
@@ -426,12 +360,12 @@ local function buildShopPanel(shopDef, padName)
 		end)
 	end
 
-	-- The slots section (slot-unlock row + per-slot rows) or the GPU
-	-- catalog section (one row per GPU type) goes after the normal upgrade
-	-- rows, if this shop has one -- never both; each lives on its own pad.
-	local refreshSlots, refreshCatalog
-	if shopDef.slotsSection then
-		refreshSlots = buildSlotsSection(scrollFrame, #shopDef.ids + 1)
+	-- The space section (just the one row) or the GPU catalog section (one
+	-- row per GPU type) goes after the normal upgrade rows, if this shop
+	-- has one -- never both; each lives on its own pad.
+	local refreshSpace, refreshCatalog
+	if shopDef.spaceSection then
+		refreshSpace = buildSpaceSection(scrollFrame, #shopDef.ids + 1)
 	end
 	if shopDef.gpuCatalogSection then
 		refreshCatalog = buildGPUCatalogSection(scrollFrame, #shopDef.ids + 1)
@@ -460,8 +394,8 @@ local function buildShopPanel(shopDef, padName)
 			end
 		end
 
-		if refreshSlots then
-			refreshSlots()
+		if refreshSpace then
+			refreshSpace()
 		end
 		if refreshCatalog then
 			refreshCatalog()
