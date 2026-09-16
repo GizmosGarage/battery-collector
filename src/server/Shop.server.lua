@@ -15,11 +15,12 @@
 	     free Starter GPU already installed; every slot after that costs a
 	     flat `GPUs.SLOT_PRICE`, up to the current tier's max. Every GPU
 	     (including a second Starter) costs its own catalog price to BUY --
-	     buying auto-installs it into the first empty unlocked slot, or
-	     straight into storage if every slot is already full (buying never
-	     fails just because your rig happens to be full). Moving a GPU
-	     between a slot and storage -- EQUIPPING or UNEQUIPPING -- costs
-	     nothing; it's just rearranging hardware you already own.
+	     buying ALWAYS goes straight to storage now (never auto-installs);
+	     the player picks WHICH physical Server_Rack a stored GPU fills by
+	     walking up to it (RackShopUI.client.lua), one rack's worth of
+	     slots at a time (GPUs.rackSlotRange). Moving a GPU between a slot
+	     and storage -- EQUIPPING or UNEQUIPPING -- costs nothing; it's
+	     just rearranging hardware you already own.
 
 	Slot state publishes as "SpaceTier" (index into GPUs.spaceTiers),
 	"UnlockedSlots" (how many slots exist), and "Slot<N>GPU" (that slot's
@@ -197,10 +198,12 @@ local function getCash(player)
 	return leaderstats and leaderstats:FindFirstChild("Cash")
 end
 
--- The first EMPTY slot number among a rig's UNLOCKED slots, or nil if
--- they're all full. Shared by buying (auto-install) and equipping.
-local function firstEmptySlot(rig)
-	for i = 1, rig.unlockedSlots do
+-- The first EMPTY slot number within [rangeStart, rangeEnd] that's also
+-- UNLOCKED, or nil if none qualify -- equipGPUEvent's range is one rack's
+-- worth of slots (GPUs.rackSlotRange), so this only ever fills a slot in
+-- the SPECIFIC rack the player walked up to, never a different one.
+local function firstEmptySlotInRange(rig, rangeStart, rangeEnd)
+	for i = rangeStart, math.min(rangeEnd, rig.unlockedSlots) do
 		if not rig.gpus[i] then
 			return i
 		end
@@ -313,22 +316,15 @@ buyGPUEvent.OnServerEvent:Connect(function(player, gpuId)
 
 	cash.Value -= gpu.price
 
-	-- Auto-install into the first empty slot if there is one; otherwise it
-	-- goes straight to storage. Buying always succeeds once it's paid for
-	-- -- a full rig just means the new card waits in storage until
-	-- something's unequipped or another slot's unlocked.
-	local emptySlot = firstEmptySlot(rig)
-	if emptySlot then
-		rig.gpus[emptySlot] = gpu.id
-	else
-		table.insert(rig.storage, gpu.id)
-	end
+	-- Always goes to storage now -- buying never auto-installs. Which
+	-- physical rack (and which slot in it) a GPU ends up in is the
+	-- player's own choice, made by walking up to that rack (see
+	-- RackShopUI.client.lua and equipGPUEvent below), not a side effect of
+	-- purchasing it.
+	table.insert(rig.storage, gpu.id)
 	publishRig(player)
 
-	print(string.format(
-		"%s bought %s (paid %d Cash) -> %s",
-		player.Name, gpu.name, gpu.price, emptySlot and ("slot " .. emptySlot) or "storage"
-	))
+	print(string.format("%s bought %s (paid %d Cash) -> storage", player.Name, gpu.name, gpu.price))
 end)
 
 -- Move one GPU OUT of a slot and into storage. Free -- you already own it,
@@ -358,14 +354,25 @@ unequipGPUEvent.OnServerEvent:Connect(function(player, slotNumber)
 	print(string.format("%s unequipped %s from slot %d", player.Name, gpuId, slotNumber))
 end)
 
--- Move one GPU OUT of storage and into the first empty slot. Free, same as
--- unequipping -- this is the other half of a "swap" (unequip the old one,
--- then equip the new one). `gpuId` identifies WHICH stored GPU by id, not
--- by position -- duplicates are interchangeable, so it just removes the
--- first matching one.
-equipGPUEvent.OnServerEvent:Connect(function(player, gpuId)
+-- Move one GPU OUT of storage and into a SPECIFIC rack's first empty slot.
+-- `rackIndex` is which physical Server_Rack the player walked up to (1,
+-- 2, 3... left to right -- see RackShopUI.client.lua, which shows this
+-- panel only while near one and sends its number); GPUs.rackSlotRange
+-- turns that into the flat slot-number range this rack owns. Free, same
+-- as unequipping -- this is the other half of a "swap" (unequip the old
+-- one at the Data Center Shop, then walk over and equip the new one
+-- here). `gpuId` identifies WHICH stored GPU by id, not by position --
+-- duplicates are interchangeable, so it just removes the first matching one.
+equipGPUEvent.OnServerEvent:Connect(function(player, gpuId, rackIndex)
 	local rig = rigs[player]
 	if not rig then
+		return
+	end
+	if type(rackIndex) ~= "number" then
+		return
+	end
+	rackIndex = math.floor(rackIndex)
+	if rackIndex < 1 then
 		return
 	end
 
@@ -380,14 +387,15 @@ equipGPUEvent.OnServerEvent:Connect(function(player, gpuId)
 		return   -- don't own a spare of this in storage
 	end
 
-	local emptySlot = firstEmptySlot(rig)
+	local rangeStart, rangeEnd = GPUs.rackSlotRange(rackIndex)
+	local emptySlot = firstEmptySlotInRange(rig, rangeStart, rangeEnd)
 	if not emptySlot then
-		return   -- no room -- unequip something first
+		return   -- this rack has no empty, unlocked slot right now
 	end
 
 	table.remove(rig.storage, storageIndex)
 	rig.gpus[emptySlot] = gpuId
 	publishRig(player)
 
-	print(string.format("%s equipped %s from storage into slot %d", player.Name, gpuId, emptySlot))
+	print(string.format("%s equipped %s from storage into slot %d (rack %d)", player.Name, gpuId, emptySlot, rackIndex))
 end)

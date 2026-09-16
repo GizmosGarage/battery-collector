@@ -6,10 +6,13 @@
 
 		PLAYER SHOP       (Workspace.Shop_Player.Pad)      -- Speed, Capacity
 		GPU SHOP          (Workspace.Shop_GPUs.Pad)        -- the GPU catalog
-		                                                       (GPUs.lua): buy a
-		                                                       card, or equip one
-		                                                       you already own
-		                                                       from storage
+		                                                       (GPUs.lua): BUY a
+		                                                       card -- it always
+		                                                       goes to storage;
+		                                                       see
+		                                                       RackShopUI.client.lua
+		                                                       for how it gets
+		                                                       INSTALLED
 		DATA CENTER SHOP  (Workspace.Shop_DataCenter.Pad)  -- expand the data
 		                                                       center's SPACE
 		                                                       (raises how many
@@ -39,16 +42,15 @@
 	    space only raises the slot ceiling, it doesn't hand you a slot;
 	    every slot past the first still costs its own flat price.
 	  - GPU Shop: one row PER GPU TYPE in the catalog, showing how many you
-	    own (equipped + stored), with a Buy button (always available if you
-	    can afford it -- it auto-installs into an empty slot, or goes to
-	    storage if the rig's full) and an Equip button (moves a spare out
-	    of storage into an empty slot) that previews the resulting total
-	    Cash/sec right on the button
+	    own (equipped + stored), with a single Buy button -- buying always
+	    lands in storage now; INSTALLING a stored GPU into a specific rack
+	    happens by walking up to that rack (RackShopUI.client.lua), not here.
 	Both panels read the SAME rig attributes off LocalPlayer, so buying a
-	GPU on one pad shows up on the other the next time you walk onto it.
-	Equipping and unequipping are both FREE -- together they're how you
-	swap a worse card for a better one: unequip the old (Data Center Shop),
-	equip the new (GPU Shop).
+	GPU here shows up everywhere else (Data Center Shop, any rack's panel)
+	the next time you look. Equipping and unequipping are both FREE --
+	together they're how you swap a worse card for a better one: unequip
+	the old at the Data Center Shop, then walk up to a rack and equip the
+	new one into the empty slot.
 
 	Buying anything just fires a RemoteEvent -- the SERVER (Shop.server.lua)
 	decides if it's allowed. When the server publishes new attributes
@@ -69,7 +71,6 @@ local buyEvent = ReplicatedStorage:WaitForChild("BuyUpgrade")
 local buySpaceEvent = ReplicatedStorage:WaitForChild("BuyDataCenterSpace")
 local buySlotEvent = ReplicatedStorage:WaitForChild("BuyGPUSlot")
 local buyGPUEvent = ReplicatedStorage:WaitForChild("BuyGPU")
-local equipGPUEvent = ReplicatedStorage:WaitForChild("EquipGPU")
 local unequipGPUEvent = ReplicatedStorage:WaitForChild("UnequipGPU")
 
 local LocalPlayer = Players.LocalPlayer
@@ -83,15 +84,14 @@ local COLOR_BUY_NO    = Color3.fromRGB(70, 74, 84)
 local COLOR_TEXT      = Color3.fromRGB(235, 237, 242)
 local COLOR_TEXT_DIM  = Color3.fromRGB(160, 164, 174)
 
-local ROW_HEIGHT     = 74    -- a normal, single-button row
-local GPU_ROW_HEIGHT = 112   -- a catalog row: taller, has TWO buttons (Buy + Equip)
-local GAP            = 10    -- vertical gap between every stacked item
+local ROW_HEIGHT = 74    -- every row, single-button
+local GAP        = 10    -- vertical gap between every stacked item
 
--- A panel never grows taller than this -- past it, the rows scroll instead.
--- The GPU Shop's 5 catalog rows (each 112px, two buttons apiece) add up to
--- way more than this, which is exactly why it needs to scroll; the Player
--- Shop's 2 rows never get close to the cap, so its panel just stays its
--- natural, shorter height.
+-- A panel never grows taller than this -- past it, the rows scroll
+-- instead. The Data Center Shop's per-slot rows can push well past this
+-- as space fills up, which is exactly why it needs to scroll; the Player
+-- Shop's 2 rows and the GPU Shop's 5 never get close to the cap, so their
+-- panels just stay their natural, shorter height.
 local MAX_PANEL_HEIGHT = 560
 
 -- title + gap + cash line -- the part of the panel that's always visible,
@@ -152,57 +152,6 @@ local function makeRowFrame(panel, order, onClick)
 	return { frame = row, info = info, buy = buy }
 end
 
--- A row with TWO buttons stacked bottom-right (Buy above, Equip above
--- that) -- used only for the GPU catalog, where one type needs both
--- "buy another" and "equip a spare from storage" as separate actions.
-local function makeGPURow(panel, order, onBuy, onEquip)
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, 0, 0, GPU_ROW_HEIGHT)
-	row.BackgroundColor3 = COLOR_ROW
-	row.BorderSizePixel = 0
-	row.LayoutOrder = order
-	row.Parent = panel
-	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
-
-	local info = Instance.new("TextLabel")
-	info.BackgroundTransparency = 1
-	info.Position = UDim2.fromOffset(12, 8)
-	info.Size = UDim2.new(1, -24, 0, 60)
-	info.Font = Enum.Font.GothamMedium
-	info.TextSize = 14
-	info.TextColor3 = COLOR_TEXT
-	info.TextXAlignment = Enum.TextXAlignment.Left
-	info.TextYAlignment = Enum.TextYAlignment.Top
-	info.TextWrapped = true
-	info.Text = ""
-	info.Parent = row
-
-	local function makeButton(bottomOffset)
-		local b = Instance.new("TextButton")
-		b.AnchorPoint = Vector2.new(1, 1)
-		b.Position = UDim2.new(1, -12, 1, bottomOffset)
-		b.Size = UDim2.fromOffset(150, 26)
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 13
-		b.TextColor3 = COLOR_TEXT
-		b.BackgroundColor3 = COLOR_BUY_NO
-		b.BorderSizePixel = 0
-		b.AutoButtonColor = false
-		b.Text = "Buy"
-		b.Parent = row
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-		return b
-	end
-
-	local buy = makeButton(-10)
-	buy.Activated:Connect(onBuy)
-
-	local equip = makeButton(-42)
-	equip.Activated:Connect(onEquip)
-
-	return { info = info, buy = buy, equip = equip }
-end
-
 -- Set one button to either the "can do it" or "can't" look, with whatever
 -- `text` it should show either way (a price, or a status like "Locked" /
 -- "No Empty Slot" for a button that isn't just cost-gated).
@@ -238,18 +187,11 @@ local function getRigState()
 		storage = {}
 	end
 
-	-- Read every unlocked slot's GPU id once, and total up the rig's
-	-- CURRENT combined Cash/sec -- this is what the GPU Shop's Equip
-	-- button preview shows the change FROM.
-	local slotGpuIds, totalCash, hasEmptySlot = {}, 0, false
+	-- Read every unlocked slot's GPU id once.
+	local slotGpuIds = {}
 	for i = 1, unlocked do
 		local id = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
 		slotGpuIds[i] = (id ~= "" and id) or nil
-		if slotGpuIds[i] then
-			totalCash += GPUs.get(slotGpuIds[i]).cashPerSec
-		else
-			hasEmptySlot = true
-		end
 	end
 
 	local storedCounts = {}
@@ -262,8 +204,6 @@ local function getRigState()
 		spaceTier = spaceTier,
 		unlocked = unlocked,
 		slotGpuIds = slotGpuIds,
-		totalCash = totalCash,
-		hasEmptySlot = hasEmptySlot,
 		storedCounts = storedCounts,
 	}
 end
@@ -348,8 +288,10 @@ local function buildSlotsSection(panel, startOrder)
 	return refreshSlots
 end
 
--- GPU SHOP: one row per GPU TYPE in the catalog. Returns a
--- `refreshCatalog()` function that repaints all of them.
+-- GPU SHOP: one row per GPU TYPE in the catalog, BUY only now -- equipping
+-- a stored GPU into a specific rack happens over at that rack
+-- (RackShopUI.client.lua), not here. Returns a `refreshCatalog()`
+-- function that repaints all of them.
 local function buildGPUCatalogSection(panel, startOrder)
 	-- One row per GPU TYPE (not per GPU you own) -- owning three Basics
 	-- still shows one "Basic AI GPU" row, with an owned/equipped/stored
@@ -357,10 +299,8 @@ local function buildGPUCatalogSection(panel, startOrder)
 	-- many duplicates a player stockpiles.
 	local gpuRows = {}
 	for i, gpu in GPUs.catalog do
-		gpuRows[gpu.id] = makeGPURow(panel, startOrder + i - 1, function()
+		gpuRows[gpu.id] = makeRowFrame(panel, startOrder + i - 1, function()
 			buyGPUEvent:FireServer(gpu.id)
-		end, function()
-			equipGPUEvent:FireServer(gpu.id)
 		end)
 	end
 
@@ -384,26 +324,12 @@ local function buildGPUCatalogSection(panel, startOrder)
 			)
 
 			setButtonState(row.buy, state.cash >= gpu.price, "Buy  $" .. gpu.price)
-
-			if storedCount == 0 then
-				setButtonState(row.equip, false, "None Stored")
-			elseif not state.hasEmptySlot then
-				setButtonState(row.equip, false, "No Empty Slot")
-			else
-				-- The preview: exactly what "show how total Cash/sec would
-				-- change" means here -- the button itself says the before
-				-- and after, so equipping is never a guess.
-				setButtonState(
-					row.equip, true,
-					string.format("Equip (%d->%d/s)", state.totalCash, state.totalCash + gpu.cashPerSec)
-				)
-			end
 		end
 	end
 
-	-- Repaint whenever the rig OR storage changes -- a catalog row's Equip
-	-- button depends on ALL of these (empty-slot availability, the Cash/sec
-	-- preview, and how many of this type are stored).
+	-- Repaint whenever the rig OR storage changes -- the owned/equipped/
+	-- stored counts shown here depend on all of it, even though buying
+	-- itself only ever touches storage.
 	LocalPlayer:GetAttributeChangedSignal("UnlockedSlots"):Connect(refreshCatalog)
 	LocalPlayer:GetAttributeChangedSignal("GPUStorageJSON"):Connect(refreshCatalog)
 	for i = 1, GPUs.MAX_SLOTS do

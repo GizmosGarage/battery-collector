@@ -95,6 +95,27 @@ end
 -- after that, up to your current space tier's maxSlots, costs this.
 GPUs.SLOT_PRICE = 100
 
+-- How many equipment slots ONE physical Server_Rack in the world holds.
+-- Equipping now only happens by walking up to a specific rack (see
+-- RackShopUI.client.lua) -- Shop.server.lua needs to know which of a
+-- player's flat "Slot<N>GPU" numbers belong to "the rack you're standing
+-- at", and GPURackDisplay.client.lua needs the same grouping to show the
+-- right physical card in the right slot. Both read it from here so a
+-- future rack size change can't leave the two disagreeing.
+GPUs.SLOTS_PER_RACK = 4
+
+-- The global slot-number range (inclusive) that rack `rackIndex` covers --
+-- racks are numbered 1, 2, 3... left to right in the order they're built
+-- (see RackShopUI.client.lua/GPURackDisplay.client.lua, which sort the
+-- actual Server_Rack parts by position to assign these numbers). Rack 1 is
+-- slots 1..SLOTS_PER_RACK, rack 2 is the next SLOTS_PER_RACK, and so on --
+-- pure arithmetic, so the server never needs to know where a rack actually
+-- sits in the world, only which NUMBER it is.
+function GPUs.rackSlotRange(rackIndex)
+	local first = (rackIndex - 1) * GPUs.SLOTS_PER_RACK + 1
+	return first, first + GPUs.SLOTS_PER_RACK - 1
+end
+
 -- Add up a whole rig's combined Cash/sec and power draw -- the same sum
 -- DataCenter.server.lua needs to run the payout loop for ONE player, and
 -- StatusPanel.client.lua needs to show that SAME player's own numbers back

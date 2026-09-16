@@ -8,8 +8,10 @@ Players collect batteries, deposit them to power an AI data center, and
 spend its earnings on collection upgrades, GPUs, slots, and additional
 space. Better fields unlock through lifetime earnings. Cash, upgrades, GPU
 equipment, and deposited power persist between sessions; carried batteries
-do not. Equipped GPUs also show up physically, one card per occupied slot,
-on the Server_Racks next to the data center.
+do not. The GPU Shop only sells into storage — installing one is a separate
+step, done by walking up to a specific Server_Rack and choosing which
+stored GPU fills it, and equipped GPUs show up physically there too, one
+card per occupied slot.
 
 The status panel shows bag fullness, current income, remaining power time,
 and progress toward the next field.
@@ -54,7 +56,8 @@ Battery Collector/
 │   │   ├── FieldLockDisplay.client.lua   personal field lock displays
 │   │   ├── StatusPanel.client.lua        always-visible gameplay status
 │   │   ├── GPURackDisplay.client.lua     shows equipped GPUs on the Server_Racks
-│   │   └── ShopUI.client.lua             shop panels
+│   │   ├── RackShopUI.client.lua         install a stored GPU into a specific rack
+│   │   └── ShopUI.client.lua             shop panels (GPU Shop only sells to storage)
 │   └── shared/             → ReplicatedStorage
 │       ├── Upgrades.lua    upgrade costs, effects, and shop definitions
 │       ├── GPUs.lua        GPU catalog, space, slots, and output calculations
@@ -107,9 +110,10 @@ source code and reference art cannot restore the complete world. It contains:
   8 slots the Starter Room + Small Server Room space tiers allow) — each a
   `MeshPart` holding its own 4 GPU-card `Model`s, named bottom to top
   `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
-  GPURackDisplay.client.lua reads however many racks actually exist, in Z
-  order, so adding another (same naming, further along +Z) to cover a
-  bigger space tier needs no code change.
+  GPURackDisplay.client.lua and RackShopUI.client.lua both read however
+  many racks actually exist, in Z order (rack 1, 2, 3...), so adding
+  another (same naming, further along +Z) to cover a bigger space tier
+  needs no code change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`.
 
 ## Requirements
 
