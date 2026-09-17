@@ -81,21 +81,21 @@ GPUs.SLOTS_PER_RACK = 4
 
 -- FLOOR tiers -- how many RACKS the building has room for, not how many a
 -- player has actually bought (see GPUs.rackPrice for that). Each upgrade
--- adds a whole physical ROW -- 16 racks -- matching the world, which has 64
--- Server_Racks built (4 rows of 16, each row spanning all 4 spaced-out
--- columns), so Row 4 is the ceiling. Index 1 (free) is what every player
--- starts with.
+-- adds a whole physical COLUMN -- 16 racks (4 rows deep) -- matching the
+-- world, which has 64 Server_Racks built as 4 such columns side by side,
+-- so Column 4 is the ceiling. Index 1 (free) is what every player starts
+-- with.
 --
--- IMPORTANT: "row" here means Z position, not the 4 left-right columns the
--- world was built in. RackShopUI.client.lua/GPURackDisplay.client.lua
--- number racks by sorting Z first, then X -- so slots unlock front-to-back
--- ACROSS the whole width (all 4 columns' first row, then all 4 columns'
--- second row, ...), not column-by-column.
+-- Racks are numbered COLUMN first (left to right), then ROW within a
+-- column (front to back) -- see GPUs.sortRacks, which both
+-- RackShopUI.client.lua and GPURackDisplay.client.lua use. So buying up
+-- through rack 16 fills in column 1 completely, front to back, before
+-- rack 17 ever exists in column 2 -- these tier names track that exactly.
 GPUs.floorTiers = {
-	{ name = "Row 1", maxRacks = 16, price = 0 },
-	{ name = "Row 2", maxRacks = 32, price = 250000 },
-	{ name = "Row 3", maxRacks = 48, price = 2500000 },
-	{ name = "Row 4", maxRacks = 64, price = 25000000 },
+	{ name = "Column 1", maxRacks = 16, price = 0 },
+	{ name = "Column 2", maxRacks = 32, price = 250000 },
+	{ name = "Column 3", maxRacks = 48, price = 2500000 },
+	{ name = "Column 4", maxRacks = 64, price = 25000000 },
 }
 
 -- The largest a data center could ever get -- the last floor tier's
@@ -132,15 +132,58 @@ function GPUs.rackPrice(rackNumber)
 end
 
 -- The global slot-number range (inclusive) that rack `rackIndex` covers --
--- racks are numbered 1, 2, 3... left to right in the order they're built
--- (see RackShopUI.client.lua/GPURackDisplay.client.lua, which sort the
--- actual Server_Rack parts by position to assign these numbers). Rack 1 is
--- slots 1..SLOTS_PER_RACK, rack 2 is the next SLOTS_PER_RACK, and so on --
--- pure arithmetic, so the server never needs to know where a rack actually
--- sits in the world, only which NUMBER it is.
+-- racks are numbered 1, 2, 3... in GPUs.sortRacks order (see below). Rack 1
+-- is slots 1..SLOTS_PER_RACK, rack 2 is the next SLOTS_PER_RACK, and so on
+-- -- pure arithmetic, so the server never needs to know where a rack
+-- actually sits in the world, only which NUMBER it is.
 function GPUs.rackSlotRange(rackIndex)
 	local first = (rackIndex - 1) * GPUs.SLOTS_PER_RACK + 1
 	return first, first + GPUs.SLOTS_PER_RACK - 1
+end
+
+-- Puts a list of Server_Rack instances into canonical rack-number order --
+-- COLUMN first (left to right), then ROW within a column (front to back,
+-- smallest Z first), then left-to-right among any racks that still tie.
+-- RackShopUI.client.lua and GPURackDisplay.client.lua both call this
+-- instead of each keeping their own comparator, so "rack 2's panel" and
+-- "rack 2's physical cards" can never quietly drift out of agreement.
+--
+-- Columns aren't hard-coded positions -- they're DETECTED from the actual
+-- gap between racks' X positions: touching racks (same column) differ by
+-- about one rack's width; a jump of more than COLUMN_GAP_THRESHOLD studs
+-- means a new column started. This reads the world instead of assuming
+-- any particular layout, so moving/adding/re-spacing columns in Studio
+-- later needs no code change here.
+local COLUMN_GAP_THRESHOLD = 8   -- studs -- bigger than one rack touching the next, smaller than the gap between columns
+function GPUs.sortRacks(racks)
+	local sorted = table.clone(racks)
+	table.sort(sorted, function(a, b)
+		return a.Position.X < b.Position.X
+	end)
+
+	local columnOf = {}
+	local column = 1
+	local previousX = nil
+	for _, rack in sorted do
+		if previousX and (rack.Position.X - previousX) > COLUMN_GAP_THRESHOLD then
+			column += 1
+		end
+		columnOf[rack] = column
+		previousX = rack.Position.X
+	end
+
+	table.sort(sorted, function(a, b)
+		local columnA, columnB = columnOf[a], columnOf[b]
+		if columnA ~= columnB then
+			return columnA < columnB
+		end
+		if a.Position.Z ~= b.Position.Z then
+			return a.Position.Z < b.Position.Z
+		end
+		return a.Position.X < b.Position.X
+	end)
+
+	return sorted
 end
 
 -- Add up a whole rig's combined Cash/sec and power draw -- the same sum

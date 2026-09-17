@@ -14,13 +14,13 @@
 	GPU_Bottom, GPU_Bottom_Middle, GPU_Top_Middle, GPU_Top, nested as ITS
 	OWN children -- so several racks can each have their own set under the
 	same 4 names. Racks themselves are read straight out of Workspace
-	(every BasePart named "Server_Rack"), sorted by Z position (row by row)
-	and then by X within a tied row (left to right), so slot 1 is always
-	the bottom card of whichever rack sits at the smallest Z/X, slot 5 is
-	the bottom card of the next rack over, and so on. Add another rack in
-	Studio later (same naming) and this script picks it up with no code
-	change -- the same live-reads-the-world habit Fields.lua uses for Pad
-	sizes instead of hard-coding them.
+	(every BasePart named "Server_Rack") and put in GPUs.sortRacks order --
+	column first (left to right), then row within a column (front to
+	back) -- so slot 1 is always the bottom card of column 1's frontmost
+	rack, slot 5 is the bottom card of the rack right behind it, and so on.
+	Add another rack in Studio later (same naming) and this script picks
+	it up with no code change -- the same live-reads-the-world habit
+	Fields.lua uses for Pad sizes instead of hard-coding them.
 
 	Slot N is shown exactly when this player's "Slot<N>GPU" attribute
 	(published by Shop.server.lua) is non-empty -- a LOCKED slot (past
@@ -50,21 +50,15 @@ local GPU_MODEL_NAMES = { "GPU_Bottom", "GPU_Bottom_Middle", "GPU_Top_Middle", "
 -- this script starts running.
 workspace:WaitForChild("Server_Rack", 10)
 
--- Every Server_Rack in the world, row by row (smallest Z first) and
--- left-to-right within a row (smallest X first) -- see header comment. The
--- X tie-break only matters once racks share a Z (a grid, not a single line).
-local racks = {}
+-- Every Server_Rack in the world, in GPUs.sortRacks order -- see header
+-- comment.
+local unsortedRacks = {}
 for _, child in workspace:GetChildren() do
 	if child.Name == "Server_Rack" and child:IsA("BasePart") then
-		table.insert(racks, child)
+		table.insert(unsortedRacks, child)
 	end
 end
-table.sort(racks, function(a, b)
-	if a.Position.Z == b.Position.Z then
-		return a.Position.X < b.Position.X
-	end
-	return a.Position.Z < b.Position.Z
-end)
+local racks = GPUs.sortRacks(unsortedRacks)
 
 -- Flatten into one ordered list of GPU-card MODELS, slot 1 first -- rack
 -- 1's four cards, then rack 2's four, and so on. A rack missing one of the

@@ -120,17 +120,21 @@ source code and reference art cannot restore the complete world. It contains:
   overlaps them, housing the other 3 rack columns).
 - `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
   `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
-  racks touching within a row, rows 16 studs apart, and columns spaced by
-  the original `Platform`'s own width (24 studs); the first column sits
-  flush against the complex's left edge, the last flush against
-  `Platform_Expansion`'s right edge. Each rack is a `MeshPart` holding its
-  own 4 GPU-card `Model`s, named bottom to top `GPU_Bottom`,
-  `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
+  racks touching within a row, rows 16 studs apart, columns 12 studs
+  apart; the first column sits flush against the complex's left edge, the
+  last flush against `Platform_Expansion`'s right edge, and both
+  `Platform`/`Platform_Expansion` trim flush with the racks' own back edge
+  too. Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s,
+  named bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
+  `GPU_Top`.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
-  many racks actually exist, sorted by Z (row by row, i.e. front-to-back —
-  NOT by the 4 left-right columns above) then by X within a tied row (left
-  to right), so adding another in Studio needs no code change — see
-  `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`. A player's `RacksOwned`
+  many racks actually exist and number them via `GPUs.sortRacks` — COLUMN
+  first (left to right, detected from the gap between racks' X positions,
+  not a hard-coded position), then ROW within a column (front to back) —
+  so buying up through rack 16 fills column 1 completely before rack 17
+  ever exists in column 2. Adding/moving racks or columns in Studio needs
+  no code change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`/
+  `GPUs.sortRacks`. A player's `RacksOwned`
   (bought individually at the Data Center Shop, gated by `FloorTier`) can be
   less than 64 — an owned-but-not-yet-bought rack still physically exists,
   its slots just show "Locked" until bought.
