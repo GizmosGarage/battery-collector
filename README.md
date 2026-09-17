@@ -8,12 +8,15 @@ Players collect batteries, deposit them to power an AI data center, and
 spend its earnings on collection upgrades, GPUs, and additional space.
 Better fields unlock through lifetime earnings. Cash, upgrades, GPU
 equipment, and deposited power persist between sessions; carried batteries
-do not. Buying space is the only way to get more equipment slots — every
-slot up to a tier's max comes free with it. The GPU Shop only sells into
-storage; installing, moving, or removing hardware all happen by walking up
-to a specific Server_Rack and picking from a panel of what's installed
-there and what's in storage, and equipped GPUs show up physically there
-too, one card per occupied slot.
+do not. Buying space is the only way to get more equipment slots, and is
+itself two independent purchases at the Data Center Shop: buy the next
+physical Server_Rack (+4 slots, capped by the current floor), or upgrade
+the floor itself (room for 3 more racks, without buying them). Every slot
+in an owned rack comes free with it. The GPU Shop only sells into storage;
+installing, moving, or removing hardware all happen by walking up to a
+specific Server_Rack and picking from a panel of what's installed there
+and what's in storage, and equipped GPUs show up physically there too, one
+card per occupied slot.
 
 The status panel shows bag fullness, current income, remaining power time,
 and progress toward the next field.
@@ -104,19 +107,25 @@ source code and reference art cannot restore the complete world. It contains:
 - The baseplate, spawn pad, and camera
 - `ServerStorage`: the four battery models (`Battery` = AA, `Battery_AAA`,
   `Battery_C`, `Battery_D`) — each one's pivot is set to its own centre
-- `Workspace.DataCenter`, `Workspace.Shop_Player`, `Workspace.Shop_GPUs`,
-  and `Workspace.Shop_DataCenter` — each with a `Pad` and floating sign
+- `Workspace.Shop_Player`, `Workspace.Shop_GPUs`, and `Workspace.Shop_DataCenter`
+  — each with a `Pad` and floating sign
 - `Workspace.Field_Green`, `Workspace.Field_Yellow`, `Workspace.Field_Blue`,
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
-- `Workspace.Server_Rack` (one per 4 equipment slots — currently 2, for the
-  8 slots the Starter Room + Small Server Room space tiers allow) — each a
+- `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
+  dump-off `Pad`, its floating `Sign`, and a `Platform` part that houses
+  both the pad and the 9-rack grid described next.
+- `Workspace.Server_Rack` (one per 4 equipment slots — 9 total, matching
+  `GPUs.MAX_RACKS`, arranged in 3 rows of 3 on the `Platform` above) — each a
   `MeshPart` holding its own 4 GPU-card `Model`s, named bottom to top
   `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
-  many racks actually exist, in Z order (rack 1, 2, 3...), so adding
-  another (same naming, further along +Z) to cover a bigger space tier
-  needs no code change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`.
+  many racks actually exist, sorted by Z (row by row) then by X within a
+  tied row (left to right), so adding another in Studio needs no code
+  change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`. A player's
+  `RacksOwned` (bought individually at the Data Center Shop) can be less
+  than 9 — an owned-but-not-yet-bought rack still physically exists, its
+  slots just show "Locked" until bought.
 
 ## Requirements
 

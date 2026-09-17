@@ -13,7 +13,8 @@
 	Same "walk up, panel appears" idea as the shop pads (ShopUI.client.lua)
 	and the same per-rack numbering GPURackDisplay.client.lua uses to show
 	the right physical card in the right slot: every Server_Rack in
-	Workspace, sorted left-to-right by Z position, is rack 1, 2, 3... and
+	Workspace, sorted by Z position first (row 1, then row 2, ...) and by X
+	position within a tied row (left to right), is rack 1, 2, 3... and
 	GPUs.rackSlotRange turns a rack number into the flat "Slot<N>GPU" range
 	it owns (GPUs.SLOTS_PER_RACK per rack). The SERVER
 	(Shop.server.lua's equipGPUEvent) re-derives that same range from the
@@ -70,10 +71,12 @@ local PROXIMITY_RADIUS = 6   -- studs -- close enough to a rack to see its panel
 -- one, same reason GPURackDisplay.client.lua does.
 workspace:WaitForChild("Server_Rack", 10)
 
--- Every Server_Rack in the world, left-to-right in build order (smallest Z
--- first) -- rack 1, rack 2, ... in the SAME order GPURackDisplay.client.lua
--- numbers them, so "rack 2's panel" and "rack 2's physical cards" always
--- agree on which slots that means.
+-- Every Server_Rack in the world, row by row (smallest Z first) and
+-- left-to-right within a row (smallest X first) -- rack 1, rack 2, ... in
+-- the SAME order GPURackDisplay.client.lua numbers them, so "rack 2's
+-- panel" and "rack 2's physical cards" always agree on which slots that
+-- means. The X tie-break only matters once racks share a Z (a grid, not a
+-- single line) -- see the 3x3 layout in Workspace.
 local racks = {}
 for _, child in workspace:GetChildren() do
 	if child.Name == "Server_Rack" and child:IsA("BasePart") then
@@ -81,6 +84,9 @@ for _, child in workspace:GetChildren() do
 	end
 end
 table.sort(racks, function(a, b)
+	if a.Position.Z == b.Position.Z then
+		return a.Position.X < b.Position.X
+	end
 	return a.Position.Z < b.Position.Z
 end)
 

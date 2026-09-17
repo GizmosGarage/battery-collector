@@ -14,15 +14,22 @@
 		                                                       for how it gets
 		                                                       INSTALLED
 		DATA CENTER SHOP  (Workspace.Shop_DataCenter.Pad)  -- expand the data
-		                                                       center's SPACE
-		                                                       -- the ONLY
-		                                                       thing this
-		                                                       pad does now;
-		                                                       every slot up
-		                                                       to the new
-		                                                       tier's max
-		                                                       comes free
-		                                                       with it
+		                                                       center's
+		                                                       SPACE -- the
+		                                                       ONLY thing
+		                                                       this pad does
+		                                                       now, as TWO
+		                                                       independent
+		                                                       buttons: buy
+		                                                       the next
+		                                                       Server_Rack
+		                                                       (+4 slots,
+		                                                       capped by the
+		                                                       floor below),
+		                                                       or upgrade the
+		                                                       floor itself
+		                                                       (+room for 3
+		                                                       more racks)
 
 	Walk onto any pad -- actually onto its footprint, not just near it --
 	and THAT platform's panel appears; walk off and it hides. Standing on
@@ -30,8 +37,9 @@
 
 	A shop's normal upgrade rows (Speed/Capacity) show the current effect,
 	the next-level effect, and the Cash cost.
-	  - Data Center Shop: just ONE row -- current space tier + an Expand
-	    button for the next one (`shopDef.spaceSection`).
+	  - Data Center Shop: TWO rows (`shopDef.spaceSection`) -- "buy the next
+	    Server_Rack" (capped by the current floor) and "upgrade the floor"
+	    (room for 3 more racks, doesn't buy them).
 	  - GPU Shop: one row PER GPU TYPE in the catalog (`shopDef.gpuCatalogSection`),
 	    showing how many you own (equipped + stored), with a single Buy
 	    button -- buying always lands in storage; INSTALLING a stored GPU
@@ -56,7 +64,8 @@ local HttpService = game:GetService("HttpService")
 local Upgrades = require(ReplicatedStorage:WaitForChild("Upgrades"))
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 local buyEvent = ReplicatedStorage:WaitForChild("BuyUpgrade")
-local buySpaceEvent = ReplicatedStorage:WaitForChild("BuyDataCenterSpace")
+local buyRackEvent = ReplicatedStorage:WaitForChild("BuyServerRack")
+local buyFloorEvent = ReplicatedStorage:WaitForChild("BuyDataCenterFloor")
 local buyGPUEvent = ReplicatedStorage:WaitForChild("BuyGPU")
 
 local LocalPlayer = Players.LocalPlayer
@@ -75,7 +84,7 @@ local GAP        = 10    -- vertical gap between every stacked item
 
 -- A panel never grows taller than this -- past it, the rows scroll
 -- instead. None of these three panels come close to the cap anymore
--- (Player Shop 2 rows, GPU Shop 5, Data Center Shop 1), so it's mostly
+-- (Player Shop 2 rows, GPU Shop 5, Data Center Shop 2), so it's mostly
 -- future headroom at this point -- kept so a panel that DOES grow tall
 -- later (or a rack's, see RackShopUI.client.lua) degrades gracefully
 -- instead of running off-screen.
@@ -155,15 +164,16 @@ end
 
 -- Everything both the Data Center Shop and the GPU Shop need to repaint
 -- themselves, read once off LocalPlayer's attributes: current Cash, the
--- current space tier, which slots are unlocked and what's installed in
--- each, and how many of each GPU type are sitting in storage. Both panels
--- show the SAME rig from two different angles, so this is one shared
--- snapshot instead of two panels separately re-reading (and re-decoding
--- the storage JSON) every refresh.
+-- current floor tier and how many racks are owned, which slots are
+-- unlocked and what's installed in each, and how many of each GPU type are
+-- sitting in storage. Both panels show the SAME rig from two different
+-- angles, so this is one shared snapshot instead of two panels separately
+-- re-reading (and re-decoding the storage JSON) every refresh.
 local function getRigState()
 	local cash = getCashValue()
-	local spaceTier = LocalPlayer:GetAttribute("SpaceTier") or 1
-	local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or 1
+	local floorTier = LocalPlayer:GetAttribute("FloorTier") or 1
+	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
+	local unlocked = LocalPlayer:GetAttribute("UnlockedSlots") or (racksOwned * GPUs.SLOTS_PER_RACK)
 
 	-- Storage is a variable-length list, so it travels as a single
 	-- JSON-encoded string attribute instead of one attribute per item --
@@ -187,38 +197,66 @@ local function getRigState()
 
 	return {
 		cash = cash,
-		spaceTier = spaceTier,
+		floorTier = floorTier,
+		racksOwned = racksOwned,
 		unlocked = unlocked,
 		slotGpuIds = slotGpuIds,
 		storedCounts = storedCounts,
 	}
 end
 
--- DATA CENTER SHOP: just the ONE "Data Center Space" row -- current tier
--- + an Expand button for the next one. Every slot up to a tier's max comes
--- free with it (GPUs.maxSlotsForTier -- see Shop.server.lua); installing
--- or removing actual GPU hardware happens at a rack now
+-- DATA CENTER SHOP: TWO rows.
+--   1. "Buy Server Rack" -- the next physical rack (+GPUs.SLOTS_PER_RACK
+--      slots), capped by the current floor's room (GPUs.maxRacksForTier).
+--   2. "Upgrade Floor" -- room for 3 MORE racks, without buying them.
+-- Installing or removing actual GPU hardware happens at a rack now
 -- (RackShopUI.client.lua), not here. Returns a `refreshSpace()` function.
 local function buildSpaceSection(panel, startOrder)
-	local spaceRow = makeRowFrame(panel, startOrder, function()
-		buySpaceEvent:FireServer()
+	local rackRow = makeRowFrame(panel, startOrder, function()
+		buyRackEvent:FireServer()
+	end)
+	local floorRow = makeRowFrame(panel, startOrder + 1, function()
+		buyFloorEvent:FireServer()
 	end)
 
 	local function refreshSpace()
 		local cash = getCashValue()
-		local tierIndex = LocalPlayer:GetAttribute("SpaceTier") or 1
-		local tier = GPUs.spaceTiers[tierIndex]
-		local nextTier = GPUs.spaceTiers[tierIndex + 1]
+		local floorTierIndex = LocalPlayer:GetAttribute("FloorTier") or 1
+		local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
+		local floorTier = GPUs.floorTiers[floorTierIndex]
+		local nextFloorTier = GPUs.floorTiers[floorTierIndex + 1]
 
-		spaceRow.info.Text = string.format("Data Center Space: %s (%d slots)", tier.name, tier.maxSlots)
-		if nextTier then
-			setButtonState(spaceRow.buy, cash >= nextTier.price, "Expand  $" .. nextTier.price)
+		-- Row 1: the next physical rack, if there's room for it.
+		local nextRack = racksOwned + 1
+		if nextRack > floorTier.maxRacks then
+			rackRow.info.Text = string.format(
+				"Server Rack %d/%d\nNo room left on this floor -- upgrade it below",
+				racksOwned, floorTier.maxRacks
+			)
+			setButtonState(rackRow.buy, false, "No Room")
+		elseif nextRack > GPUs.MAX_RACKS then
+			rackRow.info.Text = string.format("Server Rack %d/%d  (MAX)", racksOwned, GPUs.MAX_RACKS)
+			setButtonState(rackRow.buy, false, "MAX")
 		else
-			setButtonState(spaceRow.buy, false, "Max Space")
+			local price = GPUs.rackPrice(nextRack)
+			rackRow.info.Text = string.format(
+				"Server Rack %d/%d  (+%d slots)",
+				racksOwned, floorTier.maxRacks, GPUs.SLOTS_PER_RACK
+			)
+			setButtonState(rackRow.buy, cash >= price, "Buy  $" .. price)
+		end
+
+		-- Row 2: the floor itself -- raises the ceiling row 1 can reach.
+		floorRow.info.Text = string.format("Data Center Floor: %s (room for %d racks)", floorTier.name, floorTier.maxRacks)
+		if nextFloorTier then
+			setButtonState(floorRow.buy, cash >= nextFloorTier.price, "Upgrade  $" .. nextFloorTier.price)
+		else
+			setButtonState(floorRow.buy, false, "Max Floor")
 		end
 	end
 
-	LocalPlayer:GetAttributeChangedSignal("SpaceTier"):Connect(refreshSpace)
+	LocalPlayer:GetAttributeChangedSignal("FloorTier"):Connect(refreshSpace)
+	LocalPlayer:GetAttributeChangedSignal("RacksOwned"):Connect(refreshSpace)
 
 	return refreshSpace
 end

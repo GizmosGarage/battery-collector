@@ -5,13 +5,17 @@
 	  1. LEVEL upgrades (Speed, Capacity) -- one level per id in
 	     Upgrades.defs, published as "<id>Level" attributes. Unchanged from
 	     before the GPU system existed.
-	  2. Data center SPACE (see GPUs.lua's `spaceTiers`) -- how big the
-	     building is, which now DIRECTLY sets how many equipment SLOTS a
-	     player has (`unlockedSlots = GPUs.maxSlotsForTier(spaceTier)`) --
-	     every slot up to that tier's max comes free with the space itself;
-	     there's no separate per-slot purchase.
-	  3. GPU hardware (see GPUs.lua) -- a player has 1-32 EQUIPMENT SLOTS
-	     (set by their current space tier), plus unlimited STORAGE for
+	  2. Data center SPACE (see GPUs.lua) -- how big the building is -- is
+	     itself TWO independent purchases at the Data Center Shop now:
+	       a. a RACK (GPUs.rackPrice) -- one more physical Server_Rack's
+	          worth of equipment SLOTS. Capped by the current FLOOR tier.
+	       b. a FLOOR upgrade (GPUs.floorTiers) -- room for 3 MORE racks,
+	          without buying those racks themselves.
+	     `unlockedSlots` is always `racksOwned * GPUs.SLOTS_PER_RACK` --
+	     every slot in an owned rack comes free with it; there's no
+	     separate per-slot purchase.
+	  3. GPU hardware (see GPUs.lua) -- a player has 4-36 EQUIPMENT SLOTS
+	     (set by how many racks they own), plus unlimited STORAGE for
 	     GPUs they own but aren't running. Slot 1 starts with a free
 	     Starter GPU already installed. Every GPU (including a second
 	     Starter) costs its own catalog price to BUY -- buying ALWAYS goes
@@ -22,8 +26,9 @@
 	     Moving a GPU between a slot and storage costs nothing either way;
 	     it's just rearranging hardware you already own.
 
-	Slot state publishes as "SpaceTier" (index into GPUs.spaceTiers),
-	"UnlockedSlots" (how many slots exist), and "Slot<N>GPU" (that slot's
+	Slot state publishes as "FloorTier" (index into GPUs.floorTiers),
+	"RacksOwned" (how many racks are actually bought), "UnlockedSlots"
+	(racksOwned * GPUs.SLOTS_PER_RACK), and "Slot<N>GPU" (that slot's
 	GPU id, or "" if empty) attributes. Storage is a variable-length list,
 	which an attribute can't hold directly -- it publishes as
 	"GPUStorageJSON", a JSON-encoded array of GPU ids
@@ -34,7 +39,7 @@
 	tables with anyone.
 
 	The client shows the shop UI (or a rack's panel) and clicks a button;
-	that fires one of FOUR RemoteEvents to here. The SERVER decides
+	that fires one of FIVE RemoteEvents to here. The SERVER decides
 	whether any purchase or rearrangement is allowed -- never the client.
 
 	Levels and the whole rig now PERSIST (see PlayerData.lua): a new player
@@ -59,9 +64,13 @@ local buyEvent = Instance.new("RemoteEvent")
 buyEvent.Name = "BuyUpgrade"
 buyEvent.Parent = ReplicatedStorage
 
-local buySpaceEvent = Instance.new("RemoteEvent")
-buySpaceEvent.Name = "BuyDataCenterSpace"
-buySpaceEvent.Parent = ReplicatedStorage
+local buyRackEvent = Instance.new("RemoteEvent")
+buyRackEvent.Name = "BuyServerRack"
+buyRackEvent.Parent = ReplicatedStorage
+
+local buyFloorEvent = Instance.new("RemoteEvent")
+buyFloorEvent.Name = "BuyDataCenterFloor"
+buyFloorEvent.Parent = ReplicatedStorage
 
 local buyGPUEvent = Instance.new("RemoteEvent")
 buyGPUEvent.Name = "BuyGPU"
@@ -78,14 +87,16 @@ unequipGPUEvent.Parent = ReplicatedStorage
 -- player -> { [upgradeId] = level, ... } -- one entry per id in Upgrades.defs
 local levels = {}
 
--- player -> { spaceTier = n, unlockedSlots = n,
+-- player -> { floorTier = n, racksOwned = n, unlockedSlots = n,
 --             gpus = { [slotIndex] = gpuId or nil },
 --             storage = { gpuId, gpuId, ... } }
--- `spaceTier` is an index into GPUs.spaceTiers -- `unlockedSlots` is always
--- kept equal to GPUs.maxSlotsForTier(spaceTier), never set independently
--- (see setupPlayer and buySpaceEvent below). `storage` can hold duplicates
--- (two Basics owned but only one equipped) -- it's just a bag of ids,
--- order doesn't mean anything.
+-- `floorTier` is an index into GPUs.floorTiers (how many racks there's ROOM
+-- for); `racksOwned` is how many the player has actually bought (never
+-- more than GPUs.maxRacksForTier(floorTier)); `unlockedSlots` is always
+-- kept equal to `racksOwned * GPUs.SLOTS_PER_RACK`, never set independently
+-- (see setupPlayer, buyRackEvent, and buyFloorEvent below). `storage` can
+-- hold duplicates (two Basics owned but only one equipped) -- it's just a
+-- bag of ids, order doesn't mean anything.
 local rigs = {}
 
 local function publishLevels(player)
@@ -103,7 +114,8 @@ local function publishRig(player)
 	if not rig then
 		return
 	end
-	player:SetAttribute("SpaceTier", rig.spaceTier)
+	player:SetAttribute("FloorTier", rig.floorTier)
+	player:SetAttribute("RacksOwned", rig.racksOwned)
 	player:SetAttribute("UnlockedSlots", rig.unlockedSlots)
 	for i = 1, GPUs.MAX_SLOTS do
 		player:SetAttribute("Slot" .. i .. "GPU", rig.gpus[i] or "")
@@ -147,14 +159,33 @@ local function setupPlayer(player)
 		end
 	end
 
-	-- unlockedSlots is DERIVED from spaceTier, not read back from the save
-	-- -- see the header comment. A save from before slots came free with
-	-- space might have fewer than its tier now allows; this brings it up
-	-- to date the moment the player loads, same as a real space purchase would.
-	local spaceTier = data.spaceTier or 1
+	-- unlockedSlots is DERIVED from racksOwned, not read back from the save
+	-- -- see the header comment.
+	local floorTier, racksOwned = data.floorTier, data.racksOwned
+	if not floorTier or not racksOwned then
+		-- An older save, from before racks/floor were two separate
+		-- purchases -- convert its `spaceTier` into an equivalent
+		-- racksOwned/floorTier that keeps exactly the same slot count the
+		-- player already had, so this upgrade never regresses anyone's
+		-- progress. (`data.spaceTier` itself is left alone -- an unused
+		-- leftover key, harmless once every save has floorTier/racksOwned.)
+		local oldMaxSlots = ({ 4, 8, 16, 32 })[data.spaceTier or 1] or 4
+		racksOwned = oldMaxSlots // GPUs.SLOTS_PER_RACK
+		floorTier = #GPUs.floorTiers
+		for i, tier in GPUs.floorTiers do
+			if tier.maxRacks >= racksOwned then
+				floorTier = i
+				break
+			end
+		end
+	end
+	-- Clamp racksOwned to what the floor tier actually allows (defensive,
+	-- same spirit as the levels clamp above) in case the two ever disagree.
+	racksOwned = math.min(racksOwned, GPUs.maxRacksForTier(floorTier) or racksOwned)
 	rigs[player] = {
-		spaceTier = spaceTier,
-		unlockedSlots = GPUs.maxSlotsForTier(spaceTier),
+		floorTier = floorTier,
+		racksOwned = racksOwned,
+		unlockedSlots = racksOwned * GPUs.SLOTS_PER_RACK,
 		gpus = gpus,
 		storage = storage,
 	}
@@ -184,7 +215,8 @@ PlayerData.registerSaver(function(player, data)
 
 	local rig = rigs[player]
 	if rig then
-		data.spaceTier = rig.spaceTier
+		data.floorTier = rig.floorTier
+		data.racksOwned = rig.racksOwned
 		data.unlockedSlots = rig.unlockedSlots
 		local slots = {}
 		for i = 1, GPUs.MAX_SLOTS do
@@ -243,19 +275,49 @@ buyEvent.OnServerEvent:Connect(function(player, id)
 	print(string.format("%s bought %s -> level %d (paid %d Cash)", player.Name, id, lv[id], cost))
 end)
 
--- ---------- data center space ----------
--- Buy into the NEXT space tier -- the ONLY way to get more equipment
--- slots now. Every slot up to the new tier's max comes free with it.
-buySpaceEvent.OnServerEvent:Connect(function(player)
+-- ---------- data center: buy a server rack ----------
+-- Buy the NEXT physical rack -- +GPUs.SLOTS_PER_RACK equipment slots.
+-- Capped by the current FLOOR tier's room (see buyFloorEvent below for the
+-- other half of expanding space).
+buyRackEvent.OnServerEvent:Connect(function(player)
 	local rig = rigs[player]
 	if not rig then
 		return
 	end
 
-	local nextTier = rig.spaceTier + 1
-	local tier = GPUs.spaceTiers[nextTier]
+	local nextRack = rig.racksOwned + 1
+	local capacity = GPUs.maxRacksForTier(rig.floorTier)
+	if not capacity or nextRack > capacity then
+		return   -- no room left on this floor -- needs a floor upgrade first
+	end
+
+	local price = GPUs.rackPrice(nextRack)
+	local cash = getCash(player)
+	if not cash or cash.Value < price then
+		return
+	end
+
+	cash.Value -= price
+	rig.racksOwned = nextRack
+	rig.unlockedSlots = rig.racksOwned * GPUs.SLOTS_PER_RACK
+	publishRig(player)
+
+	print(string.format("%s bought server rack #%d (paid %d Cash)", player.Name, nextRack, price))
+end)
+
+-- ---------- data center: upgrade the floor ----------
+-- Buy room for a whole new ROW of racks (+3) -- doesn't buy the racks
+-- themselves, just raises the ceiling buyRackEvent above can reach.
+buyFloorEvent.OnServerEvent:Connect(function(player)
+	local rig = rigs[player]
+	if not rig then
+		return
+	end
+
+	local nextTier = rig.floorTier + 1
+	local tier = GPUs.floorTiers[nextTier]
 	if not tier then
-		return   -- already at the biggest space there is
+		return   -- already at the biggest floor there is
 	end
 
 	local cash = getCash(player)
@@ -264,8 +326,7 @@ buySpaceEvent.OnServerEvent:Connect(function(player)
 	end
 
 	cash.Value -= tier.price
-	rig.spaceTier = nextTier
-	rig.unlockedSlots = GPUs.maxSlotsForTier(nextTier)
+	rig.floorTier = nextTier
 	publishRig(player)
 
 	print(string.format("%s expanded the data center to %s (paid %d Cash)", player.Name, tier.name, tier.price))

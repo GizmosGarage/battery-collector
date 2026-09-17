@@ -7,11 +7,19 @@
 
 	Two separate purchases, two separate purposes (see the Data Center Shop
 	and GPU Shop in ShopUI.client.lua):
-	  1. SPACE (`GPUs.spaceTiers`) -- how big the building is. Buying a
-	     bigger space is the ONLY thing that grants more equipment slots --
-	     every slot up to that tier's `maxSlots` comes free with it (Shop
-	     server.lua sets `unlockedSlots = GPUs.maxSlotsForTier(spaceTier)`
-	     directly; there's no separate per-slot purchase anymore).
+	  1. SPACE -- how big the building is -- is itself TWO independent
+	     purchases at the Data Center Shop now:
+	       a. a RACK (`GPUs.rackPrice`) -- buys one more physical
+	          Server_Rack's worth of equipment slots (`SLOTS_PER_RACK` each).
+	          Rack 1 is free (every player starts with it, and the free
+	          Starter GPU already installed in its first slot).
+	       b. a FLOOR upgrade (`GPUs.floorTiers`) -- buys ROOM for 3 more
+	          racks (a whole row of the physical 3x3 grid built in the
+	          world), without buying those racks themselves -- it just
+	          raises the ceiling `GPUs.maxRacksForTier` lets rack purchases
+	          reach.
+	     `unlockedSlots` is always `racksOwned * SLOTS_PER_RACK` (Shop.
+	     server.lua) -- there's no separate per-slot purchase.
 	  2. GPUs (`GPUs.catalog`) -- the hardware itself, bought from the GPU
 	     Shop (always into storage) and installed into a specific slot by
 	     walking up to the Server_Rack that owns it (RackShopUI.client.lua).
@@ -62,34 +70,6 @@ end
 -- The id every player starts with, already installed in their one free slot.
 GPUs.STARTER_ID = "Starter"
 
--- Data center SPACE -- how big the building is, and (now that slots come
--- free with it) exactly how many equipment slots a player has. Ordered
--- smallest/cheapest first -- index 1 (free) is what every player starts
--- with, matching the 4-slot ceiling the game always had before space
--- became its own purchase.
-GPUs.spaceTiers = {
-	{ name = "Starter Room",      maxSlots = 4,  price = 0 },
-	{ name = "Small Server Room", maxSlots = 8,  price = 5000 },
-	{ name = "Server Hall",       maxSlots = 16, price = 50000 },
-	{ name = "Data Center Floor", maxSlots = 32, price = 500000 },
-}
-
--- The largest a data center could ever get -- the last tier's maxSlots.
--- Nothing needs this as a per-player limit (a player's own CURRENT tier
--- already caps how many slots THEY can buy -- see GPUs.maxSlotsForTier);
--- it's the absolute ceiling scripts use to size things that have to cover
--- every slot ANY player could ever have (e.g. how many "SlotNGPU"
--- attributes to publish).
-GPUs.MAX_SLOTS = GPUs.spaceTiers[#GPUs.spaceTiers].maxSlots
-
--- How many slots a given space tier (1..#GPUs.spaceTiers) has room for --
--- and, since slots come free with space now, also exactly how many slots
--- a player AT that tier has unlocked (Shop.server.lua's `unlockedSlots`).
-function GPUs.maxSlotsForTier(tierIndex)
-	local tier = GPUs.spaceTiers[tierIndex]
-	return tier and tier.maxSlots
-end
-
 -- How many equipment slots ONE physical Server_Rack in the world holds.
 -- Equipping now only happens by walking up to a specific rack (see
 -- RackShopUI.client.lua) -- Shop.server.lua needs to know which of a
@@ -98,6 +78,44 @@ end
 -- right physical card in the right slot. Both read it from here so a
 -- future rack size change can't leave the two disagreeing.
 GPUs.SLOTS_PER_RACK = 4
+
+-- FLOOR tiers -- how many RACKS the building has room for, not how many a
+-- player has actually bought (see GPUs.rackPrice for that). Each upgrade
+-- adds a whole row of 3 -- matching the physical world, which only has 9
+-- Server_Racks built (3 rows of 3), so Row 3 is the ceiling. Index 1 (free)
+-- is what every player starts with.
+GPUs.floorTiers = {
+	{ name = "Row 1", maxRacks = 3, price = 0 },
+	{ name = "Row 2", maxRacks = 6, price = 20000 },
+	{ name = "Row 3", maxRacks = 9, price = 200000 },
+}
+
+-- The largest a data center could ever get -- the last floor tier's
+-- maxRacks. Nothing needs this as a per-player limit (a player's own
+-- CURRENT floor tier already caps how many racks THEY can buy -- see
+-- GPUs.maxRacksForTier); it's the absolute ceiling scripts use to size
+-- things that have to cover every slot ANY player could ever have (e.g. how
+-- many "SlotNGPU" attributes to publish).
+GPUs.MAX_RACKS = GPUs.floorTiers[#GPUs.floorTiers].maxRacks
+GPUs.MAX_SLOTS = GPUs.MAX_RACKS * GPUs.SLOTS_PER_RACK
+
+-- How many racks a given floor tier (1..#GPUs.floorTiers) has room for.
+function GPUs.maxRacksForTier(tierIndex)
+	local tier = GPUs.floorTiers[tierIndex]
+	return tier and tier.maxRacks
+end
+
+-- The Cash cost to buy rack number `rackNumber` (2, 3, 4, ... -- rack 1 is
+-- always free, same free-Starter-slot deal the game always had). Doubles
+-- every rack after that, off a small base price -- the same "one better
+-- thing roughly doubles the last" feel as the GPU catalog above.
+GPUs.RACK_BASE_PRICE = 1000
+function GPUs.rackPrice(rackNumber)
+	if rackNumber <= 1 then
+		return 0
+	end
+	return GPUs.RACK_BASE_PRICE * 2 ^ (rackNumber - 2)
+end
 
 -- The global slot-number range (inclusive) that rack `rackIndex` covers --
 -- racks are numbered 1, 2, 3... left to right in the order they're built
