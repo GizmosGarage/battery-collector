@@ -76,7 +76,7 @@ workspace:WaitForChild("Server_Rack", 10)
 -- the SAME order GPURackDisplay.client.lua numbers them, so "rack 2's
 -- panel" and "rack 2's physical cards" always agree on which slots that
 -- means. The X tie-break only matters once racks share a Z (a grid, not a
--- single line) -- see the 3x3 layout in Workspace.
+-- single line) -- see the 4-row-by-4-column layout in Workspace.DataCenter.
 local racks = {}
 for _, child in workspace:GetChildren() do
 	if child.Name == "Server_Rack" and child:IsA("BasePart") then

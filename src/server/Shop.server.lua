@@ -9,12 +9,12 @@
 	     itself TWO independent purchases at the Data Center Shop now:
 	       a. a RACK (GPUs.rackPrice) -- one more physical Server_Rack's
 	          worth of equipment SLOTS. Capped by the current FLOOR tier.
-	       b. a FLOOR upgrade (GPUs.floorTiers) -- room for 3 MORE racks,
-	          without buying those racks themselves.
+	       b. a FLOOR upgrade (GPUs.floorTiers) -- room for 16 MORE racks
+	          (a whole physical row), without buying those racks themselves.
 	     `unlockedSlots` is always `racksOwned * GPUs.SLOTS_PER_RACK` --
 	     every slot in an owned rack comes free with it; there's no
 	     separate per-slot purchase.
-	  3. GPU hardware (see GPUs.lua) -- a player has 4-36 EQUIPMENT SLOTS
+	  3. GPU hardware (see GPUs.lua) -- a player has 4-256 EQUIPMENT SLOTS
 	     (set by how many racks they own), plus unlimited STORAGE for
 	     GPUs they own but aren't running. Slot 1 starts with a free
 	     Starter GPU already installed. Every GPU (including a second

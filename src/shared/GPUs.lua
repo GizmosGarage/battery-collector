@@ -13,9 +13,9 @@
 	          Server_Rack's worth of equipment slots (`SLOTS_PER_RACK` each).
 	          Rack 1 is free (every player starts with it, and the free
 	          Starter GPU already installed in its first slot).
-	       b. a FLOOR upgrade (`GPUs.floorTiers`) -- buys ROOM for 3 more
-	          racks (a whole row of the physical 3x3 grid built in the
-	          world), without buying those racks themselves -- it just
+	       b. a FLOOR upgrade (`GPUs.floorTiers`) -- buys ROOM for 16 more
+	          racks (a whole physical row, spanning all 4 columns built in
+	          the world), without buying those racks themselves -- it just
 	          raises the ceiling `GPUs.maxRacksForTier` lets rack purchases
 	          reach.
 	     `unlockedSlots` is always `racksOwned * SLOTS_PER_RACK` (Shop.
@@ -81,13 +81,21 @@ GPUs.SLOTS_PER_RACK = 4
 
 -- FLOOR tiers -- how many RACKS the building has room for, not how many a
 -- player has actually bought (see GPUs.rackPrice for that). Each upgrade
--- adds a whole row of 3 -- matching the physical world, which only has 9
--- Server_Racks built (3 rows of 3), so Row 3 is the ceiling. Index 1 (free)
--- is what every player starts with.
+-- adds a whole physical ROW -- 16 racks -- matching the world, which has 64
+-- Server_Racks built (4 rows of 16, each row spanning all 4 spaced-out
+-- columns), so Row 4 is the ceiling. Index 1 (free) is what every player
+-- starts with.
+--
+-- IMPORTANT: "row" here means Z position, not the 4 left-right columns the
+-- world was built in. RackShopUI.client.lua/GPURackDisplay.client.lua
+-- number racks by sorting Z first, then X -- so slots unlock front-to-back
+-- ACROSS the whole width (all 4 columns' first row, then all 4 columns'
+-- second row, ...), not column-by-column.
 GPUs.floorTiers = {
-	{ name = "Row 1", maxRacks = 3, price = 0 },
-	{ name = "Row 2", maxRacks = 6, price = 20000 },
-	{ name = "Row 3", maxRacks = 9, price = 200000 },
+	{ name = "Row 1", maxRacks = 16, price = 0 },
+	{ name = "Row 2", maxRacks = 32, price = 250000 },
+	{ name = "Row 3", maxRacks = 48, price = 2500000 },
+	{ name = "Row 4", maxRacks = 64, price = 25000000 },
 }
 
 -- The largest a data center could ever get -- the last floor tier's
@@ -106,15 +114,21 @@ function GPUs.maxRacksForTier(tierIndex)
 end
 
 -- The Cash cost to buy rack number `rackNumber` (2, 3, 4, ... -- rack 1 is
--- always free, same free-Starter-slot deal the game always had). Doubles
--- every rack after that, off a small base price -- the same "one better
--- thing roughly doubles the last" feel as the GPU catalog above.
+-- always free, same free-Starter-slot deal the game always had). Doubling
+-- EVERY rack (like the original 9-rack version did) would reach absurd
+-- numbers by rack 64, so instead it doubles every RACKS_PER_PRICE_STEP
+-- racks -- still the same "roughly doubles" feel as the GPU catalog above,
+-- just stretched out to fit a much bigger ceiling. The floor tiers above
+-- stay the big, expensive structural gates; racks are the smaller,
+-- steadily-climbing purchase that fills each floor in.
 GPUs.RACK_BASE_PRICE = 1000
+GPUs.RACKS_PER_PRICE_STEP = 8
 function GPUs.rackPrice(rackNumber)
 	if rackNumber <= 1 then
 		return 0
 	end
-	return GPUs.RACK_BASE_PRICE * 2 ^ (rackNumber - 2)
+	local step = (rackNumber - 2) // GPUs.RACKS_PER_PRICE_STEP
+	return GPUs.RACK_BASE_PRICE * 2 ^ step
 end
 
 -- The global slot-number range (inclusive) that rack `rackIndex` covers --

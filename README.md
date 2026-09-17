@@ -11,8 +11,9 @@ equipment, and deposited power persist between sessions; carried batteries
 do not. Buying space is the only way to get more equipment slots, and is
 itself two independent purchases at the Data Center Shop: buy the next
 physical Server_Rack (+4 slots, capped by the current floor), or upgrade
-the floor itself (room for 3 more racks, without buying them). Every slot
-in an owned rack comes free with it. The GPU Shop only sells into storage;
+the floor itself (room for 16 more racks — a whole physical row — without
+buying them). Every slot in an owned rack comes free with it. The GPU Shop
+only sells into storage;
 installing, moving, or removing hardware all happen by walking up to a
 specific Server_Rack and picking from a panel of what's installed there
 and what's in storage, and equipped GPUs show up physically there too, one
@@ -113,19 +114,26 @@ source code and reference art cannot restore the complete world. It contains:
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
-  dump-off `Pad`, its floating `Sign`, and a `Platform` part that houses
-  both the pad and the 9-rack grid described next.
-- `Workspace.Server_Rack` (one per 4 equipment slots — 9 total, matching
-  `GPUs.MAX_RACKS`, arranged in 3 rows of 3 on the `Platform` above) — each a
-  `MeshPart` holding its own 4 GPU-card `Model`s, named bottom to top
-  `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
+  dump-off `Pad`, its floating `Sign`, a `Platform` part (houses the pad and
+  the first rack column), and a `Platform_Expansion` part (a second, much
+  wider floor behind/beside it, starting north of the shop pads so it never
+  overlaps them, housing the other 3 rack columns).
+- `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
+  `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
+  racks touching within a row, rows 16 studs apart, and columns spaced by
+  the original `Platform`'s own width (24 studs); the first column sits
+  flush against the complex's left edge, the last flush against
+  `Platform_Expansion`'s right edge. Each rack is a `MeshPart` holding its
+  own 4 GPU-card `Model`s, named bottom to top `GPU_Bottom`,
+  `GPU_Bottom_Middle`, `GPU_Top_Middle`, `GPU_Top`.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
-  many racks actually exist, sorted by Z (row by row) then by X within a
-  tied row (left to right), so adding another in Studio needs no code
-  change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`. A player's
-  `RacksOwned` (bought individually at the Data Center Shop) can be less
-  than 9 — an owned-but-not-yet-bought rack still physically exists, its
-  slots just show "Locked" until bought.
+  many racks actually exist, sorted by Z (row by row, i.e. front-to-back —
+  NOT by the 4 left-right columns above) then by X within a tied row (left
+  to right), so adding another in Studio needs no code change — see
+  `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`. A player's `RacksOwned`
+  (bought individually at the Data Center Shop, gated by `FloorTier`) can be
+  less than 64 — an owned-but-not-yet-bought rack still physically exists,
+  its slots just show "Locked" until bought.
 
 ## Requirements
 
