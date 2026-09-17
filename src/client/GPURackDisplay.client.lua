@@ -28,6 +28,14 @@
 	as an unlocked-but-empty one, so it's already handled the same way --
 	no GPUs equipped anywhere shows a completely empty rack.
 
+	The RACK SHELL itself (the MeshPart plus its 4 side panels) is a
+	SEPARATE, coarser check: rack N is only shown at all once this
+	player's "RacksOwned" attribute is at least N -- a rack they haven't
+	bought yet doesn't physically exist for them, not even as an empty
+	shell. Slots inside an unowned rack are moot (never unlocked, so
+	always hidden anyway), but hiding the shell too is what actually
+	makes an unbought rack disappear instead of standing there empty.
+
 	WHICH GPU type is installed does matter for one thing: each card's
 	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
 	gets painted that GPU's own color (GPUs.lua's catalog), so a glance at
@@ -119,13 +127,45 @@ local function setSlotVisible(i, visible)
 	end
 end
 
--- Every card starts hidden -- an empty rack until we actually know
+-- Cache each RACK's own shell pieces (the MeshPart itself plus its 4 side
+-- panels -- NOT the GPU_* card models above, which are handled
+-- separately) the same "as built" way, so a not-yet-bought rack can be
+-- hidden entirely instead of just showing 4 empty slots.
+local SHELL_PART_NAMES = { "Panel_Back", "Panel_Left", "Panel_Right", "Panel_Top" }
+local rackShellParts = {}
+for rackIndex, rack in racks do
+	local parts = { { part = rack, transparency = rack.Transparency, canCollide = rack.CanCollide } }
+	for _, name in SHELL_PART_NAMES do
+		local part = rack:FindFirstChild(name)
+		if part then
+			table.insert(parts, { part = part, transparency = part.Transparency, canCollide = part.CanCollide })
+		end
+	end
+	rackShellParts[rackIndex] = parts
+end
+
+local function setRackVisible(rackIndex, visible)
+	for _, entry in rackShellParts[rackIndex] do
+		entry.part.Transparency = visible and entry.transparency or 1
+		entry.part.CanCollide = visible and entry.canCollide or false
+	end
+end
+
+-- Everything starts hidden -- an empty world until we actually know
 -- otherwise (render(), below, runs immediately after this).
+for rackIndex in racks do
+	setRackVisible(rackIndex, false)
+end
 for i in slotModels do
 	setSlotVisible(i, false)
 end
 
 local function render()
+	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
+	for rackIndex in racks do
+		setRackVisible(rackIndex, rackIndex <= racksOwned)
+	end
+
 	for i in slotModels do
 		local gpuId = LocalPlayer:GetAttribute("Slot" .. i .. "GPU")
 		local filled = gpuId ~= nil and gpuId ~= ""
@@ -138,6 +178,7 @@ local function render()
 	end
 end
 
+LocalPlayer:GetAttributeChangedSignal("RacksOwned"):Connect(render)
 for i in slotModels do
 	LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(render)
 end
