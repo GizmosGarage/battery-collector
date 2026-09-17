@@ -360,17 +360,24 @@ for i in racks do
 end
 
 -- ---------- show only the CLOSEST rack's panel, and only within range ----------
+-- A rack past this player's "RacksOwned" isn't just locked -- it's not
+-- physically THERE at all (GPURackDisplay.client.lua hides its whole
+-- shell) -- so it's skipped here too, the same way an out-of-range rack
+-- already was, instead of popping up a panel for a rack you can't see.
 RunService.Heartbeat:Connect(function()
 	local character = LocalPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
 
 	local closestIndex, closestDist = nil, PROXIMITY_RADIUS
 	if root then
 		for i, p in panels do
-			local dist = (root.Position - p.rackPart.Position).Magnitude
-			if dist <= closestDist then
-				closestDist = dist
-				closestIndex = i
+			if i <= racksOwned then
+				local dist = (root.Position - p.rackPart.Position).Magnitude
+				if dist <= closestDist then
+					closestDist = dist
+					closestIndex = i
+				end
 			end
 		end
 	end
