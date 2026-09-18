@@ -52,16 +52,20 @@
 	instead of staying one dense block. From tier 3 on (2+ WHOLE columns
 	unlocked), that within-column split goes away again -- column 1 sits
 	back in its one true built row, now as a whole solid aisle alongside
-	column 2 (also solid, never split), with the walkway living BETWEEN
-	the two columns instead of down the middle of column 1 alone. Same
-	client-only trick either way: a rack's TRUE built position in Studio
-	never changes, only what THIS player's client draws it at -- and this
-	script only ever moves the RACK part itself. Every shell panel and
-	GPU-card part is WELDED (in Studio, not in this script) directly to
-	its own rack and unanchored, so it rides along automatically whenever
-	the rack's CFrame changes -- a GPU card is physically incapable of
-	ending up on a DIFFERENT rack than the one it's welded to, which is
-	what makes this safe to nudge around at all.
+	column 2 (also solid, never split) -- but the two columns don't just
+	sit at their closer, natural spacing: column 1 flushes LEFT against
+	the floor's own fixed left edge, and whichever column is currently
+	the LAST one unlocked flushes RIGHT against the floor's own
+	(extended) right edge, widening the walkway between them to fill
+	however much room the floor actually has. Same client-only trick
+	either way: a rack's TRUE built position in Studio never changes,
+	only what THIS player's client draws it at -- and this script only
+	ever moves the RACK part itself. Every shell panel and GPU-card part
+	is WELDED (in Studio, not in this script) directly to its own rack
+	and unanchored, so it rides along automatically whenever the rack's
+	CFrame changes -- a GPU card is physically incapable of ending up on
+	a DIFFERENT rack than the one it's welded to, which is what makes
+	this safe to nudge around at all.
 
 	The floor itself WIDENS once 2+ columns are unlocked, but only ever
 	from its RIGHT edge -- the LEFT edge (column 1's side) never moves
@@ -98,6 +102,18 @@ local GPU_MODEL_NAMES = { "GPU_Bottom", "GPU_Bottom_Middle", "GPU_Top_Middle", "
 -- instead of assuming it's already there the instant this script starts
 -- running) instead of scanning once and possibly missing stragglers.
 local racks = GPUs.getAllRacks()
+
+-- EVERY rack's TRUE built CFrame, captured right away, before anything
+-- else in this script ever has a chance to nudge one sideways. Every
+-- later "where should this rack sit" calculation (the tier-2 split, the
+-- tier-3+ column flush, and the floor's own right-edge math) reads
+-- POSITIONS from here, never live off `racks[i].Position` -- a rack
+-- that's already been nudged this render() would otherwise get
+-- double-counted by whichever calculation runs after it moved.
+local originalCFrame = {}
+for i = 1, #racks do
+	originalCFrame[i] = racks[i].CFrame
+end
 
 -- Flatten into one ordered list of GPU-card MODELS, slot 1 first -- rack
 -- 1's four cards, then rack 2's four, and so on. A rack missing one of the
@@ -203,14 +219,13 @@ local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
 
 -- How far the floor's BUILT right edge sits past column 1's own right
 -- edge -- the same breathing room the floor already gives column 1 on
--- its (fixed) left side, reused so the floor's right edge -- the only
--- one that ever moves -- keeps that same look as it extends to cover
--- more columns, instead of going edge-tight while the left side still
--- has room to spare. Computed once, here, from column 1's TRUE built
--- position (racks[4], row 1's rightmost -- every row shares the same X)
--- -- this runs before render() ever applies the tier-2 split, so it's
--- never at risk of measuring a shifted rack by mistake.
-local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - (racks[4].Position.X + racks[4].Size.X / 2)
+-- its (fixed) left side, reused three ways below: how far the floor's
+-- own right edge extends past whichever column is last covered, AND how
+-- far THAT column has to shift right (and column 1 left) to land flush
+-- with the floor's edges -- see applyColumnLayout. Computed once, here,
+-- from column 1's TRUE built position (originalCFrame[4], row 1's
+-- rightmost -- every row shares the same X).
+local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - (originalCFrame[4].Position.X + racks[4].Size.X / 2)
 
 -- The battery dump-off Pad and its floating Sign move independently of
 -- the floor's own shape -- centered on the WALKWAY itself (see
@@ -225,14 +240,19 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 
 -- DEPTH always stays keyed to column 1's own rows (every column shares
 -- the same 4 row positions, so this never needs to change once a WHOLE
--- column's worth of depth is reached). The LEFT edge never moves --
--- always the floor's own BUILT left edge, flush with column 1's side,
--- exactly where a player already knows it from tiers 1-2 -- only the
--- RIGHT edge extends outward once 2+ whole columns are unlocked, to
--- stay flush (plus the same margin column 1 already gets) with the
--- rightmost RACK actually in play. That's what opens the walkway up in
--- the MIDDLE of the floor instead of the whole floor recentering around
--- it every time a new column unlocks.
+-- column's worth of depth is reached) -- reads Z live off `racks`, which
+-- is fine, since nothing in this script ever touches a rack's Z. The
+-- LEFT edge never moves -- always the floor's own BUILT left edge, flush
+-- with column 1's side, exactly where a player already knows it from
+-- tiers 1-2 -- only the RIGHT edge extends outward once 2+ whole columns
+-- are unlocked, to stay flush (plus PLATFORM_RIGHT_MARGIN) with the
+-- rightmost RACK now in play. Reads that rack's TRUE position from
+-- originalCFrame, not live off `racks` -- applyColumnLayout may have
+-- already flushed that SAME rack rightward by the time this runs (see
+-- render()), and measuring its already-shifted position here would
+-- double-count the margin. That's what opens the walkway up in the
+-- MIDDLE of the floor instead of the whole floor recentering around it
+-- every time a new column unlocks.
 local function updatePlatform(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
@@ -245,8 +265,8 @@ local function updatePlatform(floorTier)
 	local rightEdge = platformX + platformWidth / 2
 	if columnsCovered >= 2 then
 		local rightRackIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
-		local rightRack = racks[rightRackIndex]
-		rightEdge = (rightRack.Position.X + rightRack.Size.X / 2) + PLATFORM_RIGHT_MARGIN
+		local rightRackTrueX = originalCFrame[rightRackIndex].Position.X
+		rightEdge = (rightRackTrueX + racks[rightRackIndex].Size.X / 2) + PLATFORM_RIGHT_MARGIN
 	end
 	local width = rightEdge - platformLeftEdge
 	local centerX = (platformLeftEdge + rightEdge) / 2
@@ -261,26 +281,12 @@ local function updatePlatform(floorTier)
 	end
 end
 
--- ---------- tier-2-ONLY split layout for column 1 ----------
--- While exactly one whole column is unlocked (tier 2, GPUs.floorTiers[2]
--- -- see the columnsCovered check in render() below), column 1's racks
--- split apart into two side-by-side columns, flush with the platform's
--- own left and right edges, with a walkway down the middle -- instead of
--- sitting in one dense block with empty floor stretching out to one
--- side. From tier 3 on, applyColumn1Split gets called with
--- splitActive=false instead, putting column 1 right back in its one
--- true built row. Column 1's racks, grouped into physical ROWS --
--- consecutive racks sharing the same Z, since GPUs.sortRacks already
--- puts them in row order front-to-back -- reads the actual built spacing
--- instead of hard-coding "4 racks per row," the same "detect it, don't
--- hard-code it" habit GPUs.sortRacks itself uses for column boundaries.
---
--- Only the RACK part itself gets moved here -- every shell panel and
--- GPU-card part is welded (in Studio) directly to its own rack and
--- unanchored, so the whole assembly rides along automatically. That's
--- also what makes a GPU card structurally incapable of ending up on the
--- wrong rack: it's not "the script remembered to move it," it's
--- physically attached to one specific rack and nothing else.
+-- ---------- column layout, by tier ----------
+-- Column 1's racks, grouped into physical ROWS -- consecutive racks
+-- sharing the same Z, since GPUs.sortRacks already puts them in row
+-- order front-to-back -- reads the actual built spacing instead of
+-- hard-coding "4 racks per row," the same "detect it, don't hard-code
+-- it" habit GPUs.sortRacks itself uses for column boundaries.
 local function groupIntoRows(rackIndices)
 	local rows = {}
 	local currentRow
@@ -301,11 +307,12 @@ for i = 1, COLUMN_1_MAX_RACKS do
 end
 local column1Rows = groupIntoRows(column1Indices)
 
--- How wide a gap to open down the middle -- picked so each half ends up
--- FLUSH with the platform's own left/right edge: the walkway is
--- whatever's left over after the row's own built width (leftmost rack's
--- left edge to rightmost rack's right edge) is subtracted from the
--- platform's full width, split evenly so both edges land flush at once.
+-- Tier 2 ONLY: how wide a gap to open down the middle of column 1 --
+-- picked so each half ends up FLUSH with the tier-1/2 platform's own
+-- (unextended) left/right edge: the walkway is whatever's left over
+-- after the row's own built width (leftmost rack's left edge to
+-- rightmost rack's right edge) is subtracted from that width, split
+-- evenly so both edges land flush at once.
 local WALKWAY_WIDTH = 0
 do
 	local firstRow = column1Rows[1]
@@ -318,11 +325,11 @@ do
 	end
 end
 
--- rackIndex -> the sideways Vector3 nudge that rack needs for the split
--- layout -- the first half of each row (smaller X, the left side) nudges
--- left, the second half nudges right, so a row of racks that used to
--- touch in a single line now sits as two even pairs flush with the
--- platform's edges, with a walkway between them.
+-- rackIndex -> the sideways Vector3 nudge that rack needs for the
+-- tier-2-only split -- the first half of each row (smaller X, the left
+-- side) nudges left, the second half nudges right, so a row of racks
+-- that used to touch in a single line now sits as two even pairs flush
+-- with the tier-1/2 platform's edges, with a walkway between them.
 local splitOffset = {}
 for _, row in column1Rows do
 	local half = #row / 2
@@ -332,20 +339,59 @@ for _, row in column1Rows do
 	end
 end
 
--- Column 1's racks, cached with their TRUE built CFrame (the split
--- OFF position) -- every later call computes "original spot plus a
--- sideways nudge" from this fixed baseline, instead of repeated calls
--- (floor tier going up, or a fresh player joining already past tier 2)
--- drifting further from the true built position.
-local column1OriginalCFrame = {}
-for rackIndex = 1, COLUMN_1_MAX_RACKS do
-	column1OriginalCFrame[rackIndex] = racks[rackIndex].CFrame
-end
+local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 
-local function applyColumn1Split(splitActive)
+-- Only the RACK part itself gets moved here -- every shell panel and
+-- GPU-card part is welded (in Studio) directly to its own rack and
+-- unanchored, so the whole assembly rides along automatically. That's
+-- also what makes a GPU card structurally incapable of ending up on the
+-- wrong rack: it's not "the script remembered to move it," it's
+-- physically attached to one specific rack and nothing else.
+--
+-- Column 1 gets one of three treatments depending on how many whole
+-- columns are unlocked: tier 1 (0 columns) leaves it at its one true
+-- built row; tier 2 (exactly 1 column) splits it into two aisles flush
+-- with the tier-1/2 platform's own edges (WALKWAY_WIDTH above); tier 3+
+-- (2+ columns) puts it back in one solid row, but shifted flush with the
+-- FLOOR's own fixed left edge -- PLATFORM_RIGHT_MARGIN (the same
+-- breathing room the floor already gives it there) is exactly how far
+-- left it has to move to close that gap.
+--
+-- Whichever column is currently the LAST one unlocked (2+ columns only
+-- -- at 0-1 columns, that's column 1 itself, already handled above)
+-- flushes RIGHT the same way, against the floor's own extended right
+-- edge -- see updatePlatform for why that edge is always exactly
+-- PLATFORM_RIGHT_MARGIN past that column's true right edge, which is
+-- what makes "shift right by PLATFORM_RIGHT_MARGIN" land it exactly
+-- flush. Together, flushing column 1 left and the last column right is
+-- what widens the walkway between them, instead of leaving the columns
+-- at their closer, natural spacing. Any column strictly BETWEEN column 1
+-- and the last one (tier 4+, not asked for yet) stays at its true built
+-- position for now.
+local function applyColumnLayout(floorTier)
+	local capacity = GPUs.maxRacksForTier(floorTier) or 1
+	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
+
 	for rackIndex = 1, COLUMN_1_MAX_RACKS do
-		local offset = splitActive and splitOffset[rackIndex] or Vector3.zero
-		racks[rackIndex].CFrame = column1OriginalCFrame[rackIndex] + offset
+		local offset = Vector3.zero
+		if columnsCovered == 1 then
+			offset = splitOffset[rackIndex]
+		elseif columnsCovered >= 2 then
+			offset = Vector3.new(-PLATFORM_RIGHT_MARGIN, 0, 0)
+		end
+		racks[rackIndex].CFrame = originalCFrame[rackIndex] + offset
+	end
+
+	for columnIndex = 2, TOTAL_COLUMNS do
+		local firstRack = (columnIndex - 1) * GPUs.RACKS_PER_COLUMN + 1
+		local lastRack = math.min(columnIndex * GPUs.RACKS_PER_COLUMN, #racks)
+		local offset = Vector3.zero
+		if columnIndex == columnsCovered then
+			offset = Vector3.new(PLATFORM_RIGHT_MARGIN, 0, 0)
+		end
+		for rackIndex = firstRack, lastRack do
+			racks[rackIndex].CFrame = originalCFrame[rackIndex] + offset
+		end
 	end
 end
 
@@ -361,14 +407,8 @@ end
 local function render()
 	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
 	local floorTier = LocalPlayer:GetAttribute("FloorTier") or 1
-	-- Split ONLY while exactly one whole column is unlocked (tier 2) --
-	-- from tier 3 on (2+ columns), column 1 sits back in its single true
-	-- built row, now a whole aisle alongside column 2 instead of split
-	-- into two halves of itself. See the header comment for why.
-	local columnsCovered = (GPUs.maxRacksForTier(floorTier) or 0) // GPUs.RACKS_PER_COLUMN
-	local splitActive = columnsCovered == 1
 
-	applyColumn1Split(splitActive)
+	applyColumnLayout(floorTier)
 	updatePlatform(floorTier)
 	for rackIndex in racks do
 		setRackVisible(rackIndex, rackIndex <= racksOwned)

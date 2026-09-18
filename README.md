@@ -176,10 +176,22 @@ source code and reference art cannot restore the complete world. It contains:
   client-side illusion, same as the resizing floor. From tier 3 on (2+
   whole columns unlocked), that within-column split goes away again:
   column 1 sits back in its one true built row, now a whole solid aisle
-  alongside column 2 (also solid, never split), with the natural gap
-  already built between them serving as the walkway. The racks' BUILT
-  (Edit-mode) position in Studio is always the single centered row --
-  every layout above is a client-side illusion on top of it.
+  alongside column 2 (also solid, never split) -- but the two columns
+  don't just sit at their closer, natural spacing. Column 1 flushes LEFT
+  against `Platform`'s own fixed left edge, and whichever column is
+  currently the LAST one unlocked flushes RIGHT against `Platform`'s own
+  extended right edge (`PLATFORM_RIGHT_MARGIN` -- the same breathing
+  room the floor already gives column 1 on its left -- is exactly how
+  far each one has to move), widening the walkway between them to fill
+  however much room the floor actually has, instead of leaving the
+  natural, narrower gap. Any column strictly BETWEEN column 1 and the
+  last one (tier 4+, not built out yet) stays at its true built position
+  for now. The racks' BUILT (Edit-mode) position in Studio is always the
+  single centered row -- every layout above is a client-side illusion on
+  top of it, and `GPUs.dataCenterCenterX` (used for the Pad/Sign) still
+  lands on the correct walkway midpoint either way, since flushing both
+  sides outward by the same `PLATFORM_RIGHT_MARGIN` amount widens the
+  gap without moving its center.
   Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s, named
   bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
   `GPU_Top`. Every shell panel (`Panel_Back`/`Left`/`Right`/`Top`) and
