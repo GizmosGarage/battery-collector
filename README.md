@@ -117,28 +117,47 @@ source code and reference art cannot restore the complete world. It contains:
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
-  dump-off `Pad`, its floating `Sign`, and a `Platform` part built 24
-  studs wide (matching the Pad's own footprint) by `GPUs.RACKS_PER_COLUMN`
-  rows deep -- big enough for column 1's full 16 racks, though only
-  column 1 has a floor built under it at all right now; columns 2-4 exist
-  as bare `Server_Rack`s further out in +X with no floor of their own yet
-  (add one, the same way, whenever a player actually reaches that floor
-  tier). GPURackDisplay.client.lua resizes `Platform` client-side to stay
-  flush with the back of whichever row THAT player's FLOOR TIER (not
-  their owned-rack count) has room for -- its built (Edit-mode) size is
-  just the full-column baseline every viewer's copy shrinks down from.
+  dump-off `Pad` (its TRUE position now recentered to X=-7.675, the
+  midpoint of column 1 + column 2 + the walkway between them -- a
+  ONE-TIME, static move, not a per-tier illusion, because the deposit
+  trigger is `pad.Touched` on the SERVER in `DataCenter.server.lua`: the
+  pad's position and its trigger have to stay the same single object, or
+  a client-side "recenter" would show the pad in one spot while the real
+  trigger stayed in another. Its floating `Sign` moved the same amount,
+  to stay above it), and a `Platform` part built 24 studs wide (matching
+  the Pad's ORIGINAL footprint) by `GPUs.RACKS_PER_COLUMN` rows deep --
+  big enough for column 1's full 16 racks; only columns 1-2 have a floor
+  built under them at all right now (see GPURackDisplay.client.lua's
+  `updatePlatform`, which widens it further once 2+ columns are
+  unlocked) -- columns 3-4 exist as bare `Server_Rack`s further out in
+  +X with no floor of their own yet (add one, the same way, whenever a
+  player actually reaches that floor tier). GPURackDisplay.client.lua
+  resizes AND repositions `Platform` client-side: DEPTH stays flush with
+  the back of whichever row THAT player's FLOOR TIER has room for
+  (every column shares the same row positions, so this never changes
+  once a whole column's depth is reached); WIDTH is column 1's own
+  built footprint while 0-1 whole columns are unlocked (tiers 1-2), but
+  from tier 3 on (2+ whole columns) it widens to stay flush with the
+  leftmost and rightmost RACK now in play. Its built (Edit-mode) size is
+  just the column-1-only baseline every viewer's copy grows from.
 - `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
   `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
-  racks touching within a row, rows 16 studs apart, columns 12 studs
-  apart. Column 1's row is centered in `Platform`'s width (not flush to
-  either edge) -- the confirmed look for "every rack the Starter Row
-  allows, before buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks).
-  Once a player's floor tier has room for the whole of column 1
-  (`GPUs.floorTiers[2]`, "Column 1"), GPURackDisplay.client.lua nudges
-  column 1's racks sideways into two side-by-side columns flush with
-  `Platform`'s own left/right edges, with a walkway down the middle --
-  purely a client-side illusion, same as the shrinking floor; the racks'
-  BUILT (Edit-mode) position in Studio is always the single centered row.
+  racks touching within a row (truly flush -- zero gap, not just close),
+  rows 16 studs apart, columns roughly 7-12 studs apart. Column 1's row
+  is centered in `Platform`'s BUILT width (not flush to either edge) --
+  the confirmed look for "every rack the Starter Row allows, before
+  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). While
+  EXACTLY one whole column is unlocked (`GPUs.floorTiers[2]`, "Column
+  1" -- tier 2 only), GPURackDisplay.client.lua nudges column 1's racks
+  sideways into two side-by-side columns flush with `Platform`'s own
+  left/right edges, with a walkway down the middle -- purely a
+  client-side illusion, same as the resizing floor. From tier 3 on (2+
+  whole columns unlocked), that within-column split goes away again:
+  column 1 sits back in its one true built row, now a whole solid aisle
+  alongside column 2 (also solid, never split), with the natural gap
+  already built between them serving as the walkway. The racks' BUILT
+  (Edit-mode) position in Studio is always the single centered row --
+  every layout above is a client-side illusion on top of it.
   Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s, named
   bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
   `GPU_Top`. Every shell panel (`Panel_Back`/`Left`/`Right`/`Top`) and
