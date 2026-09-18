@@ -79,23 +79,34 @@ GPUs.STARTER_ID = "Starter"
 -- future rack size change can't leave the two disagreeing.
 GPUs.SLOTS_PER_RACK = 4
 
+-- How many racks ONE physical column holds in the world -- 4 rows deep.
+-- A purely PHYSICAL fact (unlike the floor tiers below, which are
+-- ECONOMIC caps on top of it) -- GPURackDisplay.client.lua needs this to
+-- know how far column 1's floor could ever grow, which is no longer the
+-- same number as floorTiers[1].maxRacks now that the starter tier caps
+-- out well short of a full column.
+GPUs.RACKS_PER_COLUMN = 16
+
 -- FLOOR tiers -- how many RACKS the building has room for, not how many a
--- player has actually bought (see GPUs.rackPrice for that). Each upgrade
--- adds a whole physical COLUMN -- 16 racks (4 rows deep) -- matching the
+-- player has actually bought (see GPUs.rackPrice for that). Index 1
+-- (free) is what every player starts with, and it's deliberately tight --
+-- just the FIRST ROW (4 racks) of column 1, not the whole column -- so a
+-- brand new player hits a real wall at 4 racks and has to buy into the
+-- floor itself (tier 2) to keep going. From tier 2 on, each upgrade adds
+-- a whole physical COLUMN -- 16 racks (4 rows deep) -- matching the
 -- world, which has 64 Server_Racks built as 4 such columns side by side,
--- so Column 4 is the ceiling. Index 1 (free) is what every player starts
--- with.
+-- so Column 4 is the ceiling.
 --
 -- Racks are numbered COLUMN first (left to right), then ROW within a
 -- column (front to back) -- see GPUs.sortRacks, which both
 -- RackShopUI.client.lua and GPURackDisplay.client.lua use. So buying up
--- through rack 16 fills in column 1 completely, front to back, before
--- rack 17 ever exists in column 2 -- these tier names track that exactly.
+-- through rack 4 fills in column 1's front row before rack 5 (row 2) is
+-- even reachable -- these tier names track that exactly.
 GPUs.floorTiers = {
-	{ name = "Column 1", maxRacks = 16, price = 0 },
-	{ name = "Column 2", maxRacks = 32, price = 250000 },
-	{ name = "Column 3", maxRacks = 48, price = 2500000 },
-	{ name = "Column 4", maxRacks = 64, price = 25000000 },
+	{ name = "Starter Row", maxRacks = 4,  price = 0 },
+	{ name = "Column 2",    maxRacks = 32, price = 250000 },
+	{ name = "Column 3",    maxRacks = 48, price = 2500000 },
+	{ name = "Column 4",    maxRacks = 64, price = 25000000 },
 }
 
 -- The largest a data center could ever get -- the last floor tier's

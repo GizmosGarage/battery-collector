@@ -149,16 +149,19 @@ local function setRackVisible(rackIndex, visible)
 end
 
 -- The floor under column 1 (Workspace.DataCenter.Platform) is built deep
--- enough for that WHOLE column (every row GPUs.floorTiers[1].maxRacks
--- covers), but a player who's only bought a few racks into it shouldn't
--- see empty floor stretching out past them -- resize/reposition it
--- (client-side, same trick as the racks above) to stay flush with the
--- back of whichever row their OWNED racks in column 1 currently reach.
+-- enough for that WHOLE column (GPUs.RACKS_PER_COLUMN), but a player who's
+-- only bought a few racks into it shouldn't see empty floor stretching
+-- out past them -- resize/reposition it (client-side, same trick as the
+-- racks above) to stay flush with the back of whichever row their OWNED
+-- racks in column 1 currently reach. This caps at a full column even
+-- though the STARTER floor tier alone only grants 4 -- a player can keep
+-- buying racks into column 1 past that once they've bought a bigger
+-- floor tier, and the floor has to be ready to keep growing with them.
 local platform = workspace.DataCenter:WaitForChild("Platform")
 local platformFrontEdge = platform.Position.Z - platform.Size.Z / 2
 local platformX, platformY, platformWidth, platformHeight =
 	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
-local COLUMN_1_MAX_RACKS = GPUs.floorTiers[1].maxRacks
+local COLUMN_1_MAX_RACKS = GPUs.RACKS_PER_COLUMN
 
 local function updatePlatformDepth(racksOwned)
 	local reachedIndex = math.max(1, math.min(racksOwned, COLUMN_1_MAX_RACKS, #racks))

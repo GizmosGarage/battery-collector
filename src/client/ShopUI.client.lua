@@ -39,7 +39,7 @@
 	the next-level effect, and the Cash cost.
 	  - Data Center Shop: TWO rows (`shopDef.spaceSection`) -- "buy the next
 	    Server_Rack" (capped by the current floor) and "upgrade the floor"
-	    (room for 16 more racks -- a whole physical row -- doesn't buy them).
+	    (room for MORE racks, how many varies by tier -- doesn't buy them).
 	  - GPU Shop: one row PER GPU TYPE in the catalog (`shopDef.gpuCatalogSection`),
 	    showing how many you own (equipped + stored), with a single Buy
 	    button -- buying always lands in storage; INSTALLING a stored GPU
@@ -208,8 +208,8 @@ end
 -- DATA CENTER SHOP: TWO rows.
 --   1. "Buy Server Rack" -- the next physical rack (+GPUs.SLOTS_PER_RACK
 --      slots), capped by the current floor's room (GPUs.maxRacksForTier).
---   2. "Upgrade Floor" -- room for 16 MORE racks (a whole physical row),
---      without buying them.
+--   2. "Upgrade Floor" -- room for MORE racks, how many varies by tier
+--      (GPUs.floorTiers) -- without buying them.
 -- Installing or removing actual GPU hardware happens at a rack now
 -- (RackShopUI.client.lua), not here. Returns a `refreshSpace()` function.
 local function buildSpaceSection(panel, startOrder)

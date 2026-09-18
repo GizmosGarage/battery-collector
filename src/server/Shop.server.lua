@@ -9,8 +9,9 @@
 	     itself TWO independent purchases at the Data Center Shop now:
 	       a. a RACK (GPUs.rackPrice) -- one more physical Server_Rack's
 	          worth of equipment SLOTS. Capped by the current FLOOR tier.
-	       b. a FLOOR upgrade (GPUs.floorTiers) -- room for 16 MORE racks
-	          (a whole physical row), without buying those racks themselves.
+	       b. a FLOOR upgrade (GPUs.floorTiers) -- room for MORE racks
+	          (how many varies by tier -- see GPUs.floorTiers), without
+	          buying those racks themselves.
 	     `unlockedSlots` is always `racksOwned * GPUs.SLOTS_PER_RACK` --
 	     every slot in an owned rack comes free with it; there's no
 	     separate per-slot purchase.

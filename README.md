@@ -11,9 +11,11 @@ equipment, and deposited power persist between sessions; carried batteries
 do not. Buying space is the only way to get more equipment slots, and is
 itself two independent purchases at the Data Center Shop: buy the next
 physical Server_Rack (+4 slots, capped by the current floor), or upgrade
-the floor itself (room for 16 more racks — a whole physical row — without
-buying them). Every slot in an owned rack comes free with it. The GPU Shop
-only sells into storage;
+the floor itself (room for more racks, how many varies by tier — see
+`GPUs.floorTiers` — without buying them). The starter floor deliberately
+caps out at just 4 racks (one row), so a new player hits that wall fast
+and has to buy into the floor to keep growing. Every slot in an owned
+rack comes free with it. The GPU Shop only sells into storage;
 installing, moving, or removing hardware all happen by walking up to a
 specific Server_Rack and picking from a panel of what's installed there
 and what's in storage, and equipped GPUs show up physically there too, one
