@@ -116,30 +116,39 @@ source code and reference art cannot restore the complete world. It contains:
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
-  dump-off `Pad`, its floating `Sign`, a `Platform` part (houses the pad and
-  the first rack column), and a `Platform_Expansion` part (a second, much
-  wider floor behind/beside it, starting north of the shop pads so it never
-  overlaps them, housing the other 3 rack columns).
+  dump-off `Pad`, its floating `Sign`, and a `Platform` part built 24
+  studs wide (matching the Pad's own footprint) by `GPUs.RACKS_PER_COLUMN`
+  rows deep -- big enough for column 1's full 16 racks, though only
+  column 1 has a floor built under it at all right now; columns 2-4 exist
+  as bare `Server_Rack`s further out in +X with no floor of their own yet
+  (add one, the same way, whenever a player actually reaches that floor
+  tier). GPURackDisplay.client.lua shrinks `Platform` client-side to stay
+  flush with the back of whichever row THAT player's owned racks reach --
+  its built (Edit-mode) size is just the full-column baseline every
+  viewer's copy shrinks down from.
 - `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
   `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
   racks touching within a row, rows 16 studs apart, columns 12 studs
-  apart; the first column sits flush against the complex's left edge, the
-  last flush against `Platform_Expansion`'s right edge, and both
-  `Platform`/`Platform_Expansion` trim flush with the racks' own back edge
-  too. Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s,
-  named bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
+  apart. Column 1's row is centered in `Platform`'s width (not flush to
+  either edge) -- the confirmed look for "every rack the Starter Row
+  allows, before buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks).
+  Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s, named
+  bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
   `GPU_Top`.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
-  many racks actually exist and number them via `GPUs.sortRacks` — COLUMN
+  many racks actually exist (via `GPUs.getAllRacks`, which waits for the
+  full count to stream in) and number them via `GPUs.sortRacks` — COLUMN
   first (left to right, detected from the gap between racks' X positions,
   not a hard-coded position), then ROW within a column (front to back) —
-  so buying up through rack 16 fills column 1 completely before rack 17
-  ever exists in column 2. Adding/moving racks or columns in Studio needs
-  no code change — see `GPUs.SLOTS_PER_RACK`/`GPUs.rackSlotRange`/
+  so buying up through rack 4 fills column 1's front row (the Starter Row
+  cap) before rack 5 (row 2) is even reachable. Adding/moving racks or
+  columns in Studio needs no code change — see
+  `GPUs.SLOTS_PER_RACK`/`GPUs.RACKS_PER_COLUMN`/`GPUs.rackSlotRange`/
   `GPUs.sortRacks`. A player's `RacksOwned`
   (bought individually at the Data Center Shop, gated by `FloorTier`) can be
   less than 64 — an owned-but-not-yet-bought rack still physically exists,
-  its slots just show "Locked" until bought.
+  its slots just show "Locked" until bought, and its whole shell stays
+  invisible/non-solid for that player until then.
 
 ## Requirements
 
