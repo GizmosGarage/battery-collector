@@ -66,22 +66,13 @@ local MAX_PANEL_HEIGHT = 560
 local PROXIMITY_RADIUS = 6   -- studs -- close enough to a rack to see its panel
 -- ==============================================================
 
--- The racks (and the slots each one owns) are Workspace content that
--- streams in separately from this script -- wait for at least the first
--- one, same reason GPURackDisplay.client.lua does.
-workspace:WaitForChild("Server_Rack", 10)
-
 -- Every Server_Rack in the world, in GPUs.sortRacks order -- rack 1, rack
 -- 2, ... in the SAME order GPURackDisplay.client.lua numbers them, so
 -- "rack 2's panel" and "rack 2's physical cards" always agree on which
--- slots that means.
-local unsortedRacks = {}
-for _, child in workspace:GetChildren() do
-	if child.Name == "Server_Rack" and child:IsA("BasePart") then
-		table.insert(unsortedRacks, child)
-	end
-end
-local racks = GPUs.sortRacks(unsortedRacks)
+-- slots that means. GPUs.getAllRacks waits for the full count to actually
+-- exist on this client (Workspace content streams in separately from
+-- this script) instead of scanning once and possibly missing stragglers.
+local racks = GPUs.getAllRacks()
 
 -- ---------- shared row-building helpers (same look as ShopUI.client.lua) ----------
 local function makeRowFrame(panel, order, onClick)

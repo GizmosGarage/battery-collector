@@ -186,6 +186,36 @@ function GPUs.sortRacks(racks)
 	return sorted
 end
 
+-- Waits for (up to WAIT_TIMEOUT seconds) and returns EVERY Server_Rack in
+-- Workspace, already in GPUs.sortRacks order. Racks stream into the
+-- client one at a time -- a script that scans Workspace only once, right
+-- after the FIRST one appears, can easily catch some racks but not
+-- others still in transit, and since it never scans again, those
+-- stragglers stay uncounted (and un-hidden/un-shown) for the rest of the
+-- session. Polling until the full GPUs.MAX_RACKS count actually shows up
+-- (or giving up after the timeout, rather than hanging forever if a rack
+-- is missing for a real reason) is what RackShopUI.client.lua and
+-- GPURackDisplay.client.lua both call this for, instead of each doing
+-- its own one-shot GetChildren() scan.
+local RACK_WAIT_TIMEOUT = 10
+function GPUs.getAllRacks()
+	local deadline = os.clock() + RACK_WAIT_TIMEOUT
+	local found
+	repeat
+		found = {}
+		for _, child in workspace:GetChildren() do
+			if child.Name == "Server_Rack" and child:IsA("BasePart") then
+				table.insert(found, child)
+			end
+		end
+		if #found >= GPUs.MAX_RACKS then
+			break
+		end
+		task.wait()
+	until os.clock() >= deadline
+	return GPUs.sortRacks(found)
+end
+
 -- Add up a whole rig's combined Cash/sec and power draw -- the same sum
 -- DataCenter.server.lua needs to run the payout loop for ONE player, and
 -- StatusPanel.client.lua needs to show that SAME player's own numbers back

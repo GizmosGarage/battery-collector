@@ -36,6 +36,12 @@
 	always hidden anyway), but hiding the shell too is what actually
 	makes an unbought rack disappear instead of standing there empty.
 
+	The FLOOR under column 1 (Workspace.DataCenter.Platform) gets the
+	same treatment, one level coarser still: it's resized/repositioned to
+	stay flush with the back of whichever ROW this player's owned racks
+	currently reach, instead of always covering the whole column's depth
+	even when only the front row (or less) is actually built.
+
 	WHICH GPU type is installed does matter for one thing: each card's
 	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
 	gets painted that GPU's own color (GPUs.lua's catalog), so a glance at
@@ -51,22 +57,13 @@ local LocalPlayer = Players.LocalPlayer
 
 local GPU_MODEL_NAMES = { "GPU_Bottom", "GPU_Bottom_Middle", "GPU_Top_Middle", "GPU_Top" }
 
--- The racks (and their GPU cards) are Workspace content that streams in
--- separately from this script -- wait for at least the first one to exist
--- before scanning, same reason DataCenter.server.lua waits for
--- Workspace.DataCenter instead of assuming it's already there the instant
--- this script starts running.
-workspace:WaitForChild("Server_Rack", 10)
-
 -- Every Server_Rack in the world, in GPUs.sortRacks order -- see header
--- comment.
-local unsortedRacks = {}
-for _, child in workspace:GetChildren() do
-	if child.Name == "Server_Rack" and child:IsA("BasePart") then
-		table.insert(unsortedRacks, child)
-	end
-end
-local racks = GPUs.sortRacks(unsortedRacks)
+-- comment. GPUs.getAllRacks waits for the full count to actually exist on
+-- this client (Workspace content streams in separately from this script,
+-- same reason DataCenter.server.lua waits for Workspace.DataCenter
+-- instead of assuming it's already there the instant this script starts
+-- running) instead of scanning once and possibly missing stragglers.
+local racks = GPUs.getAllRacks()
 
 -- Flatten into one ordered list of GPU-card MODELS, slot 1 first -- rack
 -- 1's four cards, then rack 2's four, and so on. A rack missing one of the
@@ -151,6 +148,27 @@ local function setRackVisible(rackIndex, visible)
 	end
 end
 
+-- The floor under column 1 (Workspace.DataCenter.Platform) is built deep
+-- enough for that WHOLE column (every row GPUs.floorTiers[1].maxRacks
+-- covers), but a player who's only bought a few racks into it shouldn't
+-- see empty floor stretching out past them -- resize/reposition it
+-- (client-side, same trick as the racks above) to stay flush with the
+-- back of whichever row their OWNED racks in column 1 currently reach.
+local platform = workspace.DataCenter:WaitForChild("Platform")
+local platformFrontEdge = platform.Position.Z - platform.Size.Z / 2
+local platformX, platformY, platformWidth, platformHeight =
+	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
+local COLUMN_1_MAX_RACKS = GPUs.floorTiers[1].maxRacks
+
+local function updatePlatformDepth(racksOwned)
+	local reachedIndex = math.max(1, math.min(racksOwned, COLUMN_1_MAX_RACKS, #racks))
+	local reachedRack = racks[reachedIndex]
+	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
+	local depth = backEdge - platformFrontEdge
+	platform.Size = Vector3.new(platformWidth, platformHeight, depth)
+	platform.CFrame = CFrame.new(platformX, platformY, platformFrontEdge + depth / 2)
+end
+
 -- Everything starts hidden -- an empty world until we actually know
 -- otherwise (render(), below, runs immediately after this).
 for rackIndex in racks do
@@ -162,6 +180,7 @@ end
 
 local function render()
 	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
+	updatePlatformDepth(racksOwned)
 	for rackIndex in racks do
 		setRackVisible(rackIndex, rackIndex <= racksOwned)
 	end
