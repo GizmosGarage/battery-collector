@@ -92,10 +92,12 @@ GPUs.RACKS_PER_COLUMN = 16
 -- (free) is what every player starts with, and it's deliberately tight --
 -- just the FIRST ROW (4 racks) of column 1, not the whole column -- so a
 -- brand new player hits a real wall at 4 racks and has to buy into the
--- floor itself (tier 2) to keep going. From tier 2 on, each upgrade adds
--- a whole physical COLUMN -- 16 racks (4 rows deep) -- matching the
--- world, which has 64 Server_Racks built as 4 such columns side by side,
--- so Column 4 is the ceiling.
+-- floor itself (tier 2) to keep going. Tier 2 finishes out column 1 (the
+-- remaining 3 rows, racks 5-16) -- a player's first floor upgrade only
+-- ever has to fill in the column they can already see. From tier 3 on,
+-- each upgrade adds a whole NEW physical COLUMN -- 16 racks (4 rows
+-- deep) -- matching the world, which has 64 Server_Racks built as 4 such
+-- columns side by side, so Column 4 is the ceiling.
 --
 -- Racks are numbered COLUMN first (left to right), then ROW within a
 -- column (front to back) -- see GPUs.sortRacks, which both
@@ -104,6 +106,7 @@ GPUs.RACKS_PER_COLUMN = 16
 -- even reachable -- these tier names track that exactly.
 GPUs.floorTiers = {
 	{ name = "Starter Row", maxRacks = 4,  price = 0 },
+	{ name = "Column 1",    maxRacks = 16, price = 25000 },
 	{ name = "Column 2",    maxRacks = 32, price = 250000 },
 	{ name = "Column 3",    maxRacks = 48, price = 2500000 },
 	{ name = "Column 4",    maxRacks = 64, price = 25000000 },
@@ -208,8 +211,24 @@ end
 -- is missing for a real reason) is what RackShopUI.client.lua and
 -- GPURackDisplay.client.lua both call this for, instead of each doing
 -- its own one-shot GetChildren() scan.
+--
+-- MEMOIZED -- the first call's result is cached and handed back as-is to
+-- every later call, in EITHER script, for the rest of this client
+-- session. This matters once GPURackDisplay.client.lua starts nudging
+-- column 1's racks sideways for the tier-2+ split layout: sortRacks
+-- numbers racks by comparing live X positions, so a SECOND scan taken
+-- after that nudge would see a big new gap in the middle of column 1 and
+-- misread it as two separate columns -- silently renumbering every rack
+-- from there on, out of step with whichever script scanned first.
+-- Caching the very first scan means every script agrees on "rack N" for
+-- the whole session, no matter which of them calls this first or how
+-- much later the other one does.
 local RACK_WAIT_TIMEOUT = 10
+local cachedRacks = nil
 function GPUs.getAllRacks()
+	if cachedRacks then
+		return cachedRacks
+	end
 	local deadline = os.clock() + RACK_WAIT_TIMEOUT
 	local found
 	repeat
@@ -224,7 +243,8 @@ function GPUs.getAllRacks()
 		end
 		task.wait()
 	until os.clock() >= deadline
-	return GPUs.sortRacks(found)
+	cachedRacks = GPUs.sortRacks(found)
+	return cachedRacks
 end
 
 -- Add up a whole rig's combined Cash/sec and power draw -- the same sum

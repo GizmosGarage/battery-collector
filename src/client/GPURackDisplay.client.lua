@@ -38,9 +38,25 @@
 
 	The FLOOR under column 1 (Workspace.DataCenter.Platform) gets the
 	same treatment, one level coarser still: it's resized/repositioned to
-	stay flush with the back of whichever ROW this player's owned racks
-	currently reach, instead of always covering the whole column's depth
-	even when only the front row (or less) is actually built.
+	stay flush with the back of whichever ROW this player's FLOOR TIER
+	has room for (not how many of those racks are actually bought yet) --
+	so upgrading the floor shows the new space immediately, empty and
+	waiting, instead of the floor creeping out one row at a time as racks
+	get bought into it.
+
+	Once a player's floor tier has room for the WHOLE of column 1 (tier 2,
+	GPUs.floorTiers[2]), column 1's racks -- all 16 of them, including the
+	4 free Starter Row ones already bought -- also nudge sideways into two
+	side-by-side columns, flush with the left/right edges of the floor
+	tile, with a walkway down the middle, instead of staying one dense
+	block. Same client-only trick as everything else here: a rack's TRUE
+	built position in Studio never changes, only what THIS player's
+	client draws it at -- and this script only ever moves the RACK part
+	itself. Every shell panel and GPU-card part is WELDED (in Studio, not
+	in this script) directly to its own rack and unanchored, so it rides
+	along automatically whenever the rack's CFrame changes -- a GPU card
+	is physically incapable of ending up on a DIFFERENT rack than the one
+	it's welded to, which is what makes this safe to nudge around at all.
 
 	WHICH GPU type is installed does matter for one thing: each card's
 	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
@@ -127,7 +143,10 @@ end
 -- Cache each RACK's own shell pieces (the MeshPart itself plus its 4 side
 -- panels -- NOT the GPU_* card models above, which are handled
 -- separately) the same "as built" way, so a not-yet-bought rack can be
--- hidden entirely instead of just showing 4 empty slots.
+-- hidden entirely instead of just showing 4 empty slots. Only
+-- Transparency/CanCollide are cached here -- POSITION doesn't need
+-- tracking, since every shell panel is welded (in Studio) directly to
+-- its own rack part and rides along automatically when the rack moves.
 local SHELL_PART_NAMES = { "Panel_Back", "Panel_Left", "Panel_Right", "Panel_Top" }
 local rackShellParts = {}
 for rackIndex, rack in racks do
@@ -149,27 +168,115 @@ local function setRackVisible(rackIndex, visible)
 end
 
 -- The floor under column 1 (Workspace.DataCenter.Platform) is built deep
--- enough for that WHOLE column (GPUs.RACKS_PER_COLUMN), but a player who's
--- only bought a few racks into it shouldn't see empty floor stretching
--- out past them -- resize/reposition it (client-side, same trick as the
--- racks above) to stay flush with the back of whichever row their OWNED
--- racks in column 1 currently reach. This caps at a full column even
--- though the STARTER floor tier alone only grants 4 -- a player can keep
--- buying racks into column 1 past that once they've bought a bigger
--- floor tier, and the floor has to be ready to keep growing with them.
+-- enough for that WHOLE column (GPUs.RACKS_PER_COLUMN), but a player
+-- whose FLOOR doesn't have room for a row yet shouldn't see empty floor
+-- stretching out past it -- resize/reposition it (client-side, same
+-- trick as the racks above) to stay flush with the back of whichever row
+-- their FLOOR TIER has room for. Deliberately keyed to the floor tier,
+-- not to how many of those racks are actually bought -- upgrading the
+-- floor should show the new room immediately, empty and waiting, not
+-- creep out one row at a time as racks get bought into it after.
 local platform = workspace.DataCenter:WaitForChild("Platform")
 local platformFrontEdge = platform.Position.Z - platform.Size.Z / 2
 local platformX, platformY, platformWidth, platformHeight =
 	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
-local COLUMN_1_MAX_RACKS = GPUs.RACKS_PER_COLUMN
+local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
 
-local function updatePlatformDepth(racksOwned)
-	local reachedIndex = math.max(1, math.min(racksOwned, COLUMN_1_MAX_RACKS, #racks))
+local function updatePlatformDepth(floorTier)
+	local capacity = GPUs.maxRacksForTier(floorTier) or 1
+	local reachedIndex = math.max(1, math.min(capacity, COLUMN_1_MAX_RACKS))
 	local reachedRack = racks[reachedIndex]
 	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
 	local depth = backEdge - platformFrontEdge
 	platform.Size = Vector3.new(platformWidth, platformHeight, depth)
 	platform.CFrame = CFrame.new(platformX, platformY, platformFrontEdge + depth / 2)
+end
+
+-- ---------- tier-2+ split layout for column 1 ----------
+-- Once a player's floor has room for the WHOLE of column 1
+-- (GPUs.maxRacksForTier(floorTier) >= COLUMN_1_MAX_RACKS -- true from
+-- GPUs.floorTiers[2], "Column 1", onward), column 1's racks split apart
+-- into two side-by-side columns, flush with the platform's own left and
+-- right edges, with a walkway down the middle -- instead of sitting in
+-- one dense block with empty floor stretching out to one side. Column
+-- 1's racks, grouped into physical ROWS -- consecutive racks sharing the
+-- same Z, since GPUs.sortRacks already puts them in row order
+-- front-to-back -- reads the actual built spacing instead of
+-- hard-coding "4 racks per row," the same "detect it, don't hard-code
+-- it" habit GPUs.sortRacks itself uses for column boundaries.
+--
+-- Only the RACK part itself gets moved here -- every shell panel and
+-- GPU-card part is welded (in Studio) directly to its own rack and
+-- unanchored, so the whole assembly rides along automatically. That's
+-- also what makes a GPU card structurally incapable of ending up on the
+-- wrong rack: it's not "the script remembered to move it," it's
+-- physically attached to one specific rack and nothing else.
+local function groupIntoRows(rackIndices)
+	local rows = {}
+	local currentRow
+	for _, rackIndex in rackIndices do
+		local z = racks[rackIndex].Position.Z
+		if not currentRow or z ~= racks[currentRow[1]].Position.Z then
+			currentRow = {}
+			table.insert(rows, currentRow)
+		end
+		table.insert(currentRow, rackIndex)
+	end
+	return rows
+end
+
+local column1Indices = {}
+for i = 1, COLUMN_1_MAX_RACKS do
+	column1Indices[i] = i
+end
+local column1Rows = groupIntoRows(column1Indices)
+
+-- How wide a gap to open down the middle -- picked so each half ends up
+-- FLUSH with the platform's own left/right edge: the walkway is
+-- whatever's left over after the row's own built width (leftmost rack's
+-- left edge to rightmost rack's right edge) is subtracted from the
+-- platform's full width, split evenly so both edges land flush at once.
+local WALKWAY_WIDTH = 0
+do
+	local firstRow = column1Rows[1]
+	if firstRow and #firstRow > 0 then
+		local leftmostRack = racks[firstRow[1]]
+		local rightmostRack = racks[firstRow[#firstRow]]
+		local rowSpan = (rightmostRack.Position.X + rightmostRack.Size.X / 2)
+			- (leftmostRack.Position.X - leftmostRack.Size.X / 2)
+		WALKWAY_WIDTH = math.max(0, platformWidth - rowSpan)
+	end
+end
+
+-- rackIndex -> the sideways Vector3 nudge that rack needs for the split
+-- layout -- the first half of each row (smaller X, the left side) nudges
+-- left, the second half nudges right, so a row of racks that used to
+-- touch in a single line now sits as two even pairs flush with the
+-- platform's edges, with a walkway between them.
+local splitOffset = {}
+for _, row in column1Rows do
+	local half = #row / 2
+	for position, rackIndex in row do
+		local side = position <= half and -1 or 1
+		splitOffset[rackIndex] = Vector3.new(side * WALKWAY_WIDTH / 2, 0, 0)
+	end
+end
+
+-- Column 1's racks, cached with their TRUE built CFrame (the split
+-- OFF position) -- every later call computes "original spot plus a
+-- sideways nudge" from this fixed baseline, instead of repeated calls
+-- (floor tier going up, or a fresh player joining already past tier 2)
+-- drifting further from the true built position.
+local column1OriginalCFrame = {}
+for rackIndex = 1, COLUMN_1_MAX_RACKS do
+	column1OriginalCFrame[rackIndex] = racks[rackIndex].CFrame
+end
+
+local function applyColumn1Split(splitActive)
+	for rackIndex = 1, COLUMN_1_MAX_RACKS do
+		local offset = splitActive and splitOffset[rackIndex] or Vector3.zero
+		racks[rackIndex].CFrame = column1OriginalCFrame[rackIndex] + offset
+	end
 end
 
 -- Everything starts hidden -- an empty world until we actually know
@@ -183,7 +290,11 @@ end
 
 local function render()
 	local racksOwned = LocalPlayer:GetAttribute("RacksOwned") or 1
-	updatePlatformDepth(racksOwned)
+	local floorTier = LocalPlayer:GetAttribute("FloorTier") or 1
+	local splitActive = (GPUs.maxRacksForTier(floorTier) or 0) >= COLUMN_1_MAX_RACKS
+
+	applyColumn1Split(splitActive)
+	updatePlatformDepth(floorTier)
 	for rackIndex in racks do
 		setRackVisible(rackIndex, rackIndex <= racksOwned)
 	end
@@ -201,6 +312,7 @@ local function render()
 end
 
 LocalPlayer:GetAttributeChangedSignal("RacksOwned"):Connect(render)
+LocalPlayer:GetAttributeChangedSignal("FloorTier"):Connect(render)
 for i in slotModels do
 	LocalPlayer:GetAttributeChangedSignal("Slot" .. i .. "GPU"):Connect(render)
 end

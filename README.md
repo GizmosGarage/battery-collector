@@ -122,27 +122,45 @@ source code and reference art cannot restore the complete world. It contains:
   column 1 has a floor built under it at all right now; columns 2-4 exist
   as bare `Server_Rack`s further out in +X with no floor of their own yet
   (add one, the same way, whenever a player actually reaches that floor
-  tier). GPURackDisplay.client.lua shrinks `Platform` client-side to stay
-  flush with the back of whichever row THAT player's owned racks reach --
-  its built (Edit-mode) size is just the full-column baseline every
-  viewer's copy shrinks down from.
+  tier). GPURackDisplay.client.lua resizes `Platform` client-side to stay
+  flush with the back of whichever row THAT player's FLOOR TIER (not
+  their owned-rack count) has room for -- its built (Edit-mode) size is
+  just the full-column baseline every viewer's copy shrinks down from.
 - `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
   `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
   racks touching within a row, rows 16 studs apart, columns 12 studs
   apart. Column 1's row is centered in `Platform`'s width (not flush to
   either edge) -- the confirmed look for "every rack the Starter Row
   allows, before buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks).
+  Once a player's floor tier has room for the whole of column 1
+  (`GPUs.floorTiers[2]`, "Column 1"), GPURackDisplay.client.lua nudges
+  column 1's racks sideways into two side-by-side columns flush with
+  `Platform`'s own left/right edges, with a walkway down the middle --
+  purely a client-side illusion, same as the shrinking floor; the racks'
+  BUILT (Edit-mode) position in Studio is always the single centered row.
   Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s, named
   bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
-  `GPU_Top`.
+  `GPU_Top`. Every shell panel (`Panel_Back`/`Left`/`Right`/`Top`) and
+  every BasePart inside those 4 GPU-card models is **unanchored and
+  welded (`WeldConstraint`) directly to the rack's own MeshPart** -- so
+  the whole assembly (shell + cards) physically rides along whenever a
+  script moves the rack part's `CFrame` (see the split layout above),
+  and a GPU card is structurally incapable of ending up attached to a
+  DIFFERENT rack than the one it's welded to. If a rack or its cards are
+  ever rebuilt in Studio, re-weld them the same way before relying on
+  GPURackDisplay.client.lua to move racks around.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
   many racks actually exist (via `GPUs.getAllRacks`, which waits for the
   full count to stream in) and number them via `GPUs.sortRacks` — COLUMN
   first (left to right, detected from the gap between racks' X positions,
   not a hard-coded position), then ROW within a column (front to back) —
   so buying up through rack 4 fills column 1's front row (the Starter Row
-  cap) before rack 5 (row 2) is even reachable. Adding/moving racks or
-  columns in Studio needs no code change — see
+  cap) before rack 5 (row 2) is even reachable. `GPUs.getAllRacks`'s result
+  is MEMOIZED (the first scan wins, for the rest of that client session) —
+  important now that column 1's racks can end up far enough apart
+  (the split layout) that a second live scan could misread the gap as a
+  new column and renumber everything out from under RackShopUI.client.lua.
+  Adding/moving racks or columns in Studio needs no code change — see
   `GPUs.SLOTS_PER_RACK`/`GPUs.RACKS_PER_COLUMN`/`GPUs.rackSlotRange`/
   `GPUs.sortRacks`. A player's `RacksOwned`
   (bought individually at the Data Center Shop, gated by `FloorTier`) can be
