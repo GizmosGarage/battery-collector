@@ -128,26 +128,36 @@ source code and reference art cannot restore the complete world. It contains:
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
-  once a whole column's depth is reached); WIDTH is column 1's own
-  built footprint while 0-1 whole columns are unlocked (tiers 1-2), but
-  from tier 3 on (2+ whole columns) it widens to stay flush with the
-  leftmost and rightmost RACK now in play. Its built (Edit-mode) size is
-  just the column-1-only baseline every viewer's copy grows from.
+  once a whole column's depth is reached). WIDTH grows ONLY from its
+  RIGHT edge -- the LEFT edge is always the floor's own BUILT left edge
+  and NEVER moves, so the room a player already knows from tiers 1-2
+  stays exactly where it was; only the right edge extends, once 2+ whole
+  columns are unlocked, to stay flush with the rightmost RACK now in
+  play (plus `PLATFORM_RIGHT_MARGIN`, the same breathing room the floor
+  already gives column 1 on its fixed left side). A version that
+  recentered the WHOLE floor around both outer edges symmetrically was
+  tried and reverted -- it moved the tier-1/2 side a player already
+  knows, which is exactly what this asymmetric version avoids. Its
+  built (Edit-mode) size is just the column-1-only baseline every
+  viewer's copy grows from.
 
-  The Pad and its Sign move THE SAME WAY, client-side, to
-  `GPUs.dataCenterCenterX(floorTier, racks)` -- centered on whichever
-  columns that player's tier actually covers, same as the floor's own
-  width. Two static positions (column 1's center, then tier 3's wider
-  center) were each tried and reverted -- one static spot can only ever
-  be right for SOME tiers, wrong for the rest, since every tier's true
-  center is a different X. So unlike everything else GPURackDisplay.
-  client.lua moves (all pure per-client illusions), this one couldn't
-  stay purely cosmetic: `DataCenter.server.lua` computes that SAME
-  formula, per player, every frame, and checks THEIR position against
-  it -- replacing what used to be a plain `pad.Touched` on the Pad's own
-  fixed position. A shared Part can only have one TRUE position, so the
-  deposit trigger can't just watch that position anymore; it has to
-  independently recompute where each player's own pad-illusion actually
+  The Pad and its Sign move INDEPENDENTLY of the floor's own shape,
+  client-side, to `GPUs.dataCenterCenterX(floorTier, racks)` -- centered
+  on the WALKWAY itself (the midpoint between the leftmost and rightmost
+  rack now in play), not the floor's own midpoint, since the floor's
+  left edge deliberately stops recentering while the pad still needs to
+  track the walkway wherever it ends up. Two STATIC pad positions
+  (column 1's center, then tier 3's wider center) were each tried and
+  reverted before this -- one static spot can only ever be right for
+  SOME tiers, wrong for the rest, since every tier's true walkway center
+  is a different X. So unlike everything else GPURackDisplay.client.lua
+  moves (all pure per-client illusions), this one couldn't stay purely
+  cosmetic: `DataCenter.server.lua` computes that SAME formula, per
+  player, every frame, and checks THEIR position against it -- replacing
+  what used to be a plain `pad.Touched` on the Pad's own fixed position.
+  A shared Part can only have one TRUE position, so the deposit trigger
+  can't just watch that position anymore; it has to independently
+  recompute where each player's own pad-illusion actually
   is, the exact same way the client does, and check against that
   instead. `GPUs.dataCenterCenterX` is the one formula both sides call,
   so they can never quietly disagree about where "the pad" is for a

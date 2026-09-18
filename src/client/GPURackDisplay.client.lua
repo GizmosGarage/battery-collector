@@ -63,14 +63,18 @@
 	ending up on a DIFFERENT rack than the one it's welded to, which is
 	what makes this safe to nudge around at all.
 
-	The floor itself WIDENS the same way once 2+ columns are unlocked --
-	flush with the leftmost and rightmost rack now in play, not just
-	column 1's own footprint -- see updatePlatform below. The battery
-	dump-off Pad and its Sign move there too, staying centered on
-	whichever columns are actually in play -- but unlike everything else
-	in this file, that's NOT a purely cosmetic illusion: DataCenter.
-	server.lua computes that exact same X, per player, to know where
-	THEIR deposit trigger actually is (see GPUs.dataCenterCenterX).
+	The floor itself WIDENS once 2+ columns are unlocked, but only ever
+	from its RIGHT edge -- the LEFT edge (column 1's side) never moves
+	from its original built position, so the room a player already knows
+	from tiers 1-2 stays exactly where it was; the walkway just opens up
+	further into the middle of a wider floor instead of the whole floor
+	recentering around it -- see updatePlatform below. The battery
+	dump-off Pad and its Sign move independently of the floor's own
+	shape, staying centered on the WALKWAY itself -- but unlike
+	everything else in this file, that's NOT a purely cosmetic illusion:
+	DataCenter.server.lua computes that exact same X, per player, to
+	know where THEIR deposit trigger actually is (see
+	GPUs.dataCenterCenterX).
 
 	WHICH GPU type is installed does matter for one thing: each card's
 	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
@@ -194,11 +198,26 @@ local platform = workspace.DataCenter:WaitForChild("Platform")
 local platformFrontEdge = platform.Position.Z - platform.Size.Z / 2
 local platformX, platformY, platformWidth, platformHeight =
 	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
+local platformLeftEdge = platformX - platformWidth / 2
 local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
 
--- The battery dump-off Pad and its floating Sign move the same way the
--- floor does -- see GPUs.dataCenterCenterX for why this has to be a
--- SHARED formula with DataCenter.server.lua, not just local math here.
+-- How far the floor's BUILT right edge sits past column 1's own right
+-- edge -- the same breathing room the floor already gives column 1 on
+-- its (fixed) left side, reused so the floor's right edge -- the only
+-- one that ever moves -- keeps that same look as it extends to cover
+-- more columns, instead of going edge-tight while the left side still
+-- has room to spare. Computed once, here, from column 1's TRUE built
+-- position (racks[4], row 1's rightmost -- every row shares the same X)
+-- -- this runs before render() ever applies the tier-2 split, so it's
+-- never at risk of measuring a shifted rack by mistake.
+local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - (racks[4].Position.X + racks[4].Size.X / 2)
+
+-- The battery dump-off Pad and its floating Sign move independently of
+-- the floor's own shape -- centered on the WALKWAY itself (see
+-- GPUs.dataCenterCenterX), not the floor's own midpoint, since the
+-- floor's left edge below deliberately stops recentering. This has to
+-- stay a SHARED formula with DataCenter.server.lua, not just local math
+-- here -- see GPUs.dataCenterCenterX for why.
 local pad = workspace.DataCenter:WaitForChild("Pad")
 local sign = workspace.DataCenter:FindFirstChild("Sign")
 local padY, padZ = pad.Position.Y, pad.Position.Z
@@ -206,11 +225,14 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 
 -- DEPTH always stays keyed to column 1's own rows (every column shares
 -- the same 4 row positions, so this never needs to change once a WHOLE
--- column's worth of depth is reached). WIDTH is the column-1-only built
--- footprint for tier 1 and 2 (0 or 1 whole columns unlocked) -- but from
--- tier 3 on (2+ whole columns), it widens to stay flush with the
--- leftmost and rightmost RACK actually in play, covering every column
--- the player has unlocked instead of just column 1's own space.
+-- column's worth of depth is reached). The LEFT edge never moves --
+-- always the floor's own BUILT left edge, flush with column 1's side,
+-- exactly where a player already knows it from tiers 1-2 -- only the
+-- RIGHT edge extends outward once 2+ whole columns are unlocked, to
+-- stay flush (plus the same margin column 1 already gets) with the
+-- rightmost RACK actually in play. That's what opens the walkway up in
+-- the MIDDLE of the floor instead of the whole floor recentering around
+-- it every time a new column unlocks.
 local function updatePlatform(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
@@ -220,21 +242,22 @@ local function updatePlatform(floorTier)
 	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
 	local depth = backEdge - platformFrontEdge
 
-	local centerX = GPUs.dataCenterCenterX(floorTier, racks)
-	local width = platformWidth
+	local rightEdge = platformX + platformWidth / 2
 	if columnsCovered >= 2 then
-		local leftRack = racks[1]
 		local rightRackIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
 		local rightRack = racks[rightRackIndex]
-		width = (rightRack.Position.X + rightRack.Size.X / 2) - (leftRack.Position.X - leftRack.Size.X / 2)
+		rightEdge = (rightRack.Position.X + rightRack.Size.X / 2) + PLATFORM_RIGHT_MARGIN
 	end
+	local width = rightEdge - platformLeftEdge
+	local centerX = (platformLeftEdge + rightEdge) / 2
 
 	platform.Size = Vector3.new(width, platformHeight, depth)
 	platform.CFrame = CFrame.new(centerX, platformY, platformFrontEdge + depth / 2)
 
-	pad.CFrame = CFrame.new(centerX, padY, padZ)
+	local padCenterX = GPUs.dataCenterCenterX(floorTier, racks)
+	pad.CFrame = CFrame.new(padCenterX, padY, padZ)
 	if sign then
-		sign.CFrame = CFrame.new(centerX, signY, signZ)
+		sign.CFrame = CFrame.new(padCenterX, signY, signZ)
 	end
 end
 
