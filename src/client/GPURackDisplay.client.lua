@@ -65,7 +65,12 @@
 
 	The floor itself WIDENS the same way once 2+ columns are unlocked --
 	flush with the leftmost and rightmost rack now in play, not just
-	column 1's own footprint -- see updatePlatform below.
+	column 1's own footprint -- see updatePlatform below. The battery
+	dump-off Pad and its Sign move there too, staying centered on
+	whichever columns are actually in play -- but unlike everything else
+	in this file, that's NOT a purely cosmetic illusion: DataCenter.
+	server.lua computes that exact same X, per player, to know where
+	THEIR deposit trigger actually is (see GPUs.dataCenterCenterX).
 
 	WHICH GPU type is installed does matter for one thing: each card's
 	FrontPanel -- the bracket the DVI-D/DisplayPort/HDMI ports sit in --
@@ -191,6 +196,14 @@ local platformX, platformY, platformWidth, platformHeight =
 	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
 local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
 
+-- The battery dump-off Pad and its floating Sign move the same way the
+-- floor does -- see GPUs.dataCenterCenterX for why this has to be a
+-- SHARED formula with DataCenter.server.lua, not just local math here.
+local pad = workspace.DataCenter:WaitForChild("Pad")
+local sign = workspace.DataCenter:FindFirstChild("Sign")
+local padY, padZ = pad.Position.Y, pad.Position.Z
+local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
+
 -- DEPTH always stays keyed to column 1's own rows (every column shares
 -- the same 4 row positions, so this never needs to change once a WHOLE
 -- column's worth of depth is reached). WIDTH is the column-1-only built
@@ -207,19 +220,22 @@ local function updatePlatform(floorTier)
 	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
 	local depth = backEdge - platformFrontEdge
 
-	local width, centerX = platformWidth, platformX
+	local centerX = GPUs.dataCenterCenterX(floorTier, racks)
+	local width = platformWidth
 	if columnsCovered >= 2 then
 		local leftRack = racks[1]
 		local rightRackIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
 		local rightRack = racks[rightRackIndex]
-		local leftEdge = leftRack.Position.X - leftRack.Size.X / 2
-		local rightEdge = rightRack.Position.X + rightRack.Size.X / 2
-		width = rightEdge - leftEdge
-		centerX = (leftEdge + rightEdge) / 2
+		width = (rightRack.Position.X + rightRack.Size.X / 2) - (leftRack.Position.X - leftRack.Size.X / 2)
 	end
 
 	platform.Size = Vector3.new(width, platformHeight, depth)
 	platform.CFrame = CFrame.new(centerX, platformY, platformFrontEdge + depth / 2)
+
+	pad.CFrame = CFrame.new(centerX, padY, padZ)
+	if sign then
+		sign.CFrame = CFrame.new(centerX, signY, signZ)
+	end
 end
 
 -- ---------- tier-2-ONLY split layout for column 1 ----------

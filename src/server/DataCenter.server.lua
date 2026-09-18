@@ -32,7 +32,17 @@
 	its own.
 
 	Dumping again while it's still running just adds more reserve.
-	Each player has their own independent run; the Pad is only the trigger.
+	Each player has their own independent run.
+
+	The Pad's EFFECTIVE X shifts per player once their floor tier
+	unlocks more than column 1 (see GPUs.dataCenterCenterX) -- so
+	instead of a plain `pad.Touched` on the Pad's own single stored
+	position, this checks each player's own position against that
+	SAME per-player formula, every frame (same 2-D bounding-box test
+	ShopUI.client.lua's isOnPad already uses for the other shop pads,
+	just server-side here since a deposit has to be trusted, not
+	client-reported). Edge-triggered off `onPad[player]` so walking on
+	and just standing there doesn't dump every single frame.
 
 	The reserve now PERSISTS (see PlayerData.lua) -- rejoin and the data
 	center picks up with exactly as much banked power as you left with,
@@ -45,6 +55,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local GPUs = require(ReplicatedStorage:WaitForChild("GPUs"))
 local PlayerData = require(script.Parent.PlayerData)
@@ -59,11 +70,24 @@ local DUMP_DEBOUNCE   = 1   -- ignore repeat touches from the same player for th
 local dataCenter = workspace:WaitForChild("DataCenter", 10)
 assert(dataCenter, "DataCenter: no 'DataCenter' model found in Workspace (it lives in the place file)")
 local pad = dataCenter:WaitForChild("Pad")
+local padHalfSize = pad.Size / 2
+local padY, padZ = pad.Position.Y, pad.Position.Z
+
+-- Every Server_Rack, in canonical rack-number order -- needed here only
+-- to feed GPUs.dataCenterCenterX (see its own comment, and the one on
+-- the Heartbeat loop below, for why this script needs to know that at
+-- all). Same wait-for-the-full-count approach RackNumbering.server.lua
+-- and every rack-reading client script already use.
+local racks = GPUs.getAllRacks()
 
 -- player -> mAh of power reserve currently banked
 local runs = {}
 -- player -> os.clock() of their last dump (debounce)
 local lastDump = {}
+-- player -> whether they were standing in the dump zone LAST frame, so a
+-- dump fires once on the frame they step into it, not every frame they
+-- stand there.
+local onPad = {}
 
 -- Sum up a player's whole rig, straight off the attributes Shop.server.lua
 -- publishes ("UnlockedSlots", "Slot<N>GPU") -- this script never needs to
@@ -94,12 +118,7 @@ local function getStat(player, name)
 end
 
 -- Walk onto the pad -> dump whatever batteries you're carrying.
-pad.Touched:Connect(function(hit)
-	local player = Players:GetPlayerFromCharacter(hit.Parent)
-	if not player then
-		return
-	end
-
+local function tryDump(player)
 	local now = os.clock()
 	if now - (lastDump[player] or 0) < DUMP_DEBOUNCE then
 		return
@@ -128,6 +147,34 @@ pad.Touched:Connect(function(hit)
 		"%s dumped %d mAh -- data center now holds %d mAh",
 		player.Name, dumped, runs[player]
 	))
+end
+
+-- Same 2-D bounding-box test ShopUI.client.lua's isOnPad already uses for
+-- the other shop pads -- checks the pad's real footprint (centered on
+-- THIS player's own GPUs.dataCenterCenterX, not the Pad's stored
+-- Position.X), not a distance-from-center radius.
+local function isOnPad(centerX, position)
+	return position.X >= centerX - padHalfSize.X and position.X <= centerX + padHalfSize.X
+		and position.Z >= padZ - padHalfSize.Z and position.Z <= padZ + padHalfSize.Z
+end
+
+RunService.Heartbeat:Connect(function()
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+
+		local standing = false
+		if root then
+			local floorTier = player:GetAttribute("FloorTier") or 1
+			local centerX = GPUs.dataCenterCenterX(floorTier, racks)
+			standing = isOnPad(centerX, root.Position)
+		end
+
+		if standing and not onPad[player] then
+			tryDump(player)
+		end
+		onPad[player] = standing
+	end
 end)
 
 -- Runs AFTER this player's final save (see PlayerData.onReleased for why
@@ -135,6 +182,7 @@ end)
 PlayerData.onReleased(function(player)
 	runs[player] = nil
 	lastDump[player] = nil
+	onPad[player] = nil
 end)
 
 -- Contribute the banked reserve to every save.

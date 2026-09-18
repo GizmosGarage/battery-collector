@@ -273,6 +273,32 @@ function GPUs.getAllRacks()
 	return cachedRacks
 end
 
+-- The X-coordinate the data center's Pad and Sign should sit at for a
+-- given floor tier -- centered on whichever columns that tier actually
+-- covers (just column 1 at tiers 1-2, column 1 THROUGH the last column
+-- tier 3+ unlocks), not always column 1's own center. This is the ONE
+-- formula both GPURackDisplay.client.lua (moves the Pad/Sign there,
+-- visually, per player -- see its updatePlatform for the matching floor
+-- width) and DataCenter.server.lua (checks deposits against that SAME
+-- per-player X) ever compute this from, so they can never quietly
+-- disagree about where "the pad" is for a given player. That agreement
+-- matters more here than it does for the racks: the shared Pad instance
+-- can only ever be in one TRUE position at a time, so unlike a rack's
+-- visibility (purely a per-client illusion), the deposit trigger has to
+-- be recomputed the same way, per player, on the SERVER -- a plain
+-- `pad.Touched` can't do that (see the README for why one static
+-- position was tried and reverted twice before this).
+function GPUs.dataCenterCenterX(floorTier, racks)
+	local capacity = GPUs.maxRacksForTier(floorTier) or 1
+	local columnsCovered = math.max(1, capacity // GPUs.RACKS_PER_COLUMN)
+	local leftRack = racks[1]
+	local rightIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
+	local rightRack = racks[rightIndex]
+	local leftEdge = leftRack.Position.X - leftRack.Size.X / 2
+	local rightEdge = rightRack.Position.X + rightRack.Size.X / 2
+	return (leftEdge + rightEdge) / 2
+end
+
 -- Add up a whole rig's combined Cash/sec and power draw -- the same sum
 -- DataCenter.server.lua needs to run the payout loop for ONE player, and
 -- StatusPanel.client.lua needs to show that SAME player's own numbers back

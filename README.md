@@ -119,22 +119,12 @@ source code and reference art cannot restore the complete world. It contains:
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
   dump-off `Pad`, its floating `Sign`, and a `Platform` part built 24
   studs wide (matching the Pad's own footprint) by `GPUs.RACKS_PER_COLUMN`
-  rows deep -- centered on column 1 (the confirmed, correct look for
-  tiers 1-2), and DELIBERATELY left there rather than recentered for
-  tier 3's wider floor: the deposit trigger is `pad.Touched` on the
-  SERVER in `DataCenter.server.lua`, on this same `Pad` instance, so its
-  position and its trigger can never drift apart -- but that also means
-  it's ONE position for every tier, not a per-player illusion, and
-  tiers 1-2's already-correct centering wins over tier 3's. (A version
-  of this recentered to tier 3's wider floor was tried and reverted --
-  it looked right at tier 3 but noticeably off-center at tiers 1-2,
-  which matter more since every player passes through them.) --
-  big enough for column 1's full 16 racks; only columns 1-2 have a floor
-  built under them at all right now (see GPURackDisplay.client.lua's
-  `updatePlatform`, which widens it further once 2+ columns are
-  unlocked) -- columns 3-4 exist as bare `Server_Rack`s further out in
-  +X with no floor of their own yet (add one, the same way, whenever a
-  player actually reaches that floor tier). GPURackDisplay.client.lua
+  rows deep -- big enough for column 1's full 16 racks; only columns 1-2
+  have a floor built under them at all right now (see GPURackDisplay.
+  client.lua's `updatePlatform`, which widens it further once 2+ columns
+  are unlocked) -- columns 3-4 exist as bare `Server_Rack`s further out
+  in +X with no floor of their own yet (add one, the same way, whenever
+  a player actually reaches that floor tier). GPURackDisplay.client.lua
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
@@ -143,6 +133,25 @@ source code and reference art cannot restore the complete world. It contains:
   from tier 3 on (2+ whole columns) it widens to stay flush with the
   leftmost and rightmost RACK now in play. Its built (Edit-mode) size is
   just the column-1-only baseline every viewer's copy grows from.
+
+  The Pad and its Sign move THE SAME WAY, client-side, to
+  `GPUs.dataCenterCenterX(floorTier, racks)` -- centered on whichever
+  columns that player's tier actually covers, same as the floor's own
+  width. Two static positions (column 1's center, then tier 3's wider
+  center) were each tried and reverted -- one static spot can only ever
+  be right for SOME tiers, wrong for the rest, since every tier's true
+  center is a different X. So unlike everything else GPURackDisplay.
+  client.lua moves (all pure per-client illusions), this one couldn't
+  stay purely cosmetic: `DataCenter.server.lua` computes that SAME
+  formula, per player, every frame, and checks THEIR position against
+  it -- replacing what used to be a plain `pad.Touched` on the Pad's own
+  fixed position. A shared Part can only have one TRUE position, so the
+  deposit trigger can't just watch that position anymore; it has to
+  independently recompute where each player's own pad-illusion actually
+  is, the exact same way the client does, and check against that
+  instead. `GPUs.dataCenterCenterX` is the one formula both sides call,
+  so they can never quietly disagree about where "the pad" is for a
+  given player.
 - `Workspace.Server_Rack` (one per 4 equipment slots — 64 total, matching
   `GPUs.MAX_RACKS`) — arranged as 4 columns of 4 rows of 4 racks each,
   racks touching within a row (truly flush -- zero gap, not just close),
