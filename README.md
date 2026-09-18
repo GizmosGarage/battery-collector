@@ -117,15 +117,18 @@ source code and reference art cannot restore the complete world. It contains:
   and `Workspace.Field_Red` — each a `Model` with a `Pad`; Yellow, Blue, and
   Red also have a `Sign` for their lock display. Green has no sign.
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
-  dump-off `Pad` (its TRUE position now recentered to X=-7.675, the
-  midpoint of column 1 + column 2 + the walkway between them -- a
-  ONE-TIME, static move, not a per-tier illusion, because the deposit
-  trigger is `pad.Touched` on the SERVER in `DataCenter.server.lua`: the
-  pad's position and its trigger have to stay the same single object, or
-  a client-side "recenter" would show the pad in one spot while the real
-  trigger stayed in another. Its floating `Sign` moved the same amount,
-  to stay above it), and a `Platform` part built 24 studs wide (matching
-  the Pad's ORIGINAL footprint) by `GPUs.RACKS_PER_COLUMN` rows deep --
+  dump-off `Pad`, its floating `Sign`, and a `Platform` part built 24
+  studs wide (matching the Pad's own footprint) by `GPUs.RACKS_PER_COLUMN`
+  rows deep -- centered on column 1 (the confirmed, correct look for
+  tiers 1-2), and DELIBERATELY left there rather than recentered for
+  tier 3's wider floor: the deposit trigger is `pad.Touched` on the
+  SERVER in `DataCenter.server.lua`, on this same `Pad` instance, so its
+  position and its trigger can never drift apart -- but that also means
+  it's ONE position for every tier, not a per-player illusion, and
+  tiers 1-2's already-correct centering wins over tier 3's. (A version
+  of this recentered to tier 3's wider floor was tried and reverted --
+  it looked right at tier 3 but noticeably off-center at tiers 1-2,
+  which matter more since every player passes through them.) --
   big enough for column 1's full 16 racks; only columns 1-2 have a floor
   built under them at all right now (see GPURackDisplay.client.lua's
   `updatePlatform`, which widens it further once 2+ columns are
