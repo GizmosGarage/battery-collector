@@ -55,7 +55,8 @@ Battery Collector/
 │   │   ├── BatterySpawner.server.lua   spawns batteries and handles collection
 │   │   ├── PlayerSpeed.server.lua      applies movement speed
 │   │   ├── DataCenter.server.lua       consumes power and pays Cash
-│   │   └── Shop.server.lua             validates purchases and manages equipment
+│   │   ├── Shop.server.lua             validates purchases and manages equipment
+│   │   └── RackNumbering.server.lua    stamps each Server_Rack's permanent number
 │   ├── client/             → StarterPlayer > StarterPlayerScripts
 │   │   ├── BatterySpin.client.lua        battery animation
 │   │   ├── BatteryGlow.client.lua        rarity effects
@@ -151,18 +152,23 @@ source code and reference art cannot restore the complete world. It contains:
   GPURackDisplay.client.lua to move racks around.
   GPURackDisplay.client.lua and RackShopUI.client.lua both read however
   many racks actually exist (via `GPUs.getAllRacks`, which waits for the
-  full count to stream in) and number them via `GPUs.sortRacks` — COLUMN
-  first (left to right, detected from the gap between racks' X positions,
-  not a hard-coded position), then ROW within a column (front to back) —
-  so buying up through rack 4 fills column 1's front row (the Starter Row
-  cap) before rack 5 (row 2) is even reachable. `GPUs.getAllRacks`'s result
-  is MEMOIZED (the first scan wins, for the rest of that client session) —
-  important now that column 1's racks can end up far enough apart
-  (the split layout) that a second live scan could misread the gap as a
-  new column and renumber everything out from under RackShopUI.client.lua.
-  Adding/moving racks or columns in Studio needs no code change — see
-  `GPUs.SLOTS_PER_RACK`/`GPUs.RACKS_PER_COLUMN`/`GPUs.rackSlotRange`/
-  `GPUs.sortRacks`. A player's `RacksOwned`
+  full count to stream in) and number them COLUMN first (left to right),
+  then ROW within a column (front to back) — so buying up through rack 4
+  fills column 1's front row (the Starter Row cap) before rack 5 (row 2)
+  is even reachable. That order comes from each rack's own `RackNumber`
+  attribute, stamped ONCE by `RackNumbering.server.lua` (a Script, so it
+  runs before any client does) using `GPUs.sortRacks` on the racks' TRUE
+  built positions — never re-derived from LIVE positions client-side,
+  because the split layout above can leave column 1's right aisle closer
+  to column 2 than `GPUs.sortRacks`' own gap-detection threshold, which
+  would otherwise misread them as one merged column and scramble every
+  rack number from there on. `GPUs.getAllRacks`'s result is also MEMOIZED
+  (the first scan wins, for the rest of that client session) as a second
+  layer of safety. Moving/adding racks or columns in Studio needs no code
+  change, but DOES need `RackNumbering.server.lua` to run again (restart
+  the server, or re-run it) so the new layout's `RackNumber`s get
+  restamped — see `GPUs.SLOTS_PER_RACK`/`GPUs.RACKS_PER_COLUMN`/
+  `GPUs.rackSlotRange`/`GPUs.sortRacks`. A player's `RacksOwned`
   (bought individually at the Data Center Shop, gated by `FloorTier`) can be
   less than 64 — an owned-but-not-yet-bought rack still physically exists,
   its slots just show "Locked" until bought, and its whole shell stays

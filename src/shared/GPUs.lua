@@ -201,7 +201,7 @@ function GPUs.sortRacks(racks)
 end
 
 -- Waits for (up to WAIT_TIMEOUT seconds) and returns EVERY Server_Rack in
--- Workspace, already in GPUs.sortRacks order. Racks stream into the
+-- Workspace, in canonical rack-number order. Racks stream into the
 -- client one at a time -- a script that scans Workspace only once, right
 -- after the FIRST one appears, can easily catch some racks but not
 -- others still in transit, and since it never scans again, those
@@ -212,17 +212,24 @@ end
 -- GPURackDisplay.client.lua both call this for, instead of each doing
 -- its own one-shot GetChildren() scan.
 --
+-- PREFERS each rack's own "RackNumber" attribute (stamped once,
+-- SERVER-side, by RackNumbering.server.lua, from the TRUE built layout)
+-- over re-deriving order from GPUs.sortRacks' live-position gap
+-- detection. That detection is only safe on a layout no one has ever
+-- nudged -- once GPURackDisplay.client.lua splits column 1 into two
+-- aisles flush with the floor tile's edges (tier 2+), the right aisle
+-- can end up CLOSER to column 2 than COLUMN_GAP_THRESHOLD, and a live
+-- re-scan at that point misreads it as one merged column, scrambling
+-- every rack number from there on. The server never moves a rack (only
+-- this client-side illusion does), so its stamped numbers are immune to
+-- that regardless of when this function happens to be called relative
+-- to the split. Falls back to sortRacks only if the attributes genuinely
+-- aren't there yet (e.g. RackNumbering.server.lua hasn't run, or hasn't
+-- replicated to this client) rather than hanging forever.
+--
 -- MEMOIZED -- the first call's result is cached and handed back as-is to
 -- every later call, in EITHER script, for the rest of this client
--- session. This matters once GPURackDisplay.client.lua starts nudging
--- column 1's racks sideways for the tier-2+ split layout: sortRacks
--- numbers racks by comparing live X positions, so a SECOND scan taken
--- after that nudge would see a big new gap in the middle of column 1 and
--- misread it as two separate columns -- silently renumbering every rack
--- from there on, out of step with whichever script scanned first.
--- Caching the very first scan means every script agrees on "rack N" for
--- the whole session, no matter which of them calls this first or how
--- much later the other one does.
+-- session, so "rack N" can never quietly renumber partway through.
 local RACK_WAIT_TIMEOUT = 10
 local cachedRacks = nil
 function GPUs.getAllRacks()
@@ -231,6 +238,7 @@ function GPUs.getAllRacks()
 	end
 	local deadline = os.clock() + RACK_WAIT_TIMEOUT
 	local found
+	local allNumbered
 	repeat
 		found = {}
 		for _, child in workspace:GetChildren() do
@@ -238,12 +246,30 @@ function GPUs.getAllRacks()
 				table.insert(found, child)
 			end
 		end
-		if #found >= GPUs.MAX_RACKS then
+		allNumbered = #found >= GPUs.MAX_RACKS
+		if allNumbered then
+			for _, rack in found do
+				if not rack:GetAttribute("RackNumber") then
+					allNumbered = false
+					break
+				end
+			end
+		end
+		if allNumbered then
 			break
 		end
 		task.wait()
 	until os.clock() >= deadline
-	cachedRacks = GPUs.sortRacks(found)
+
+	if allNumbered then
+		local sorted = table.clone(found)
+		table.sort(sorted, function(a, b)
+			return a:GetAttribute("RackNumber") < b:GetAttribute("RackNumber")
+		end)
+		cachedRacks = sorted
+	else
+		cachedRacks = GPUs.sortRacks(found)
+	end
 	return cachedRacks
 end
 
