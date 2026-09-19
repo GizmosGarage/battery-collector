@@ -47,25 +47,23 @@
 	Once a player's floor tier has room for the WHOLE of column 1 --
 	but ONLY column 1 (tier 2, GPUs.floorTiers[2]) -- column 1's racks --
 	all 16 of them, including the 4 free Starter Row ones already bought
-	-- nudge sideways into two side-by-side columns, flush with the
-	left/right edges of the floor tile, with a walkway down the middle,
-	instead of staying one dense block. From tier 3 on (2+ WHOLE columns
-	unlocked), that within-column split goes away again -- column 1 sits
-	back in its one true built row, now as a whole solid aisle alongside
-	column 2 (also solid, never split) -- but the two columns don't just
-	sit at their closer, natural spacing: column 1 flushes LEFT against
-	the floor's own fixed left edge, and whichever column is currently
-	the LAST one unlocked flushes RIGHT against the floor's own
-	(extended) right edge, widening the walkway between them to fill
-	however much room the floor actually has. Same client-only trick
-	either way: a rack's TRUE built position in Studio never changes,
-	only what THIS player's client draws it at -- and this script only
-	ever moves the RACK part itself. Every shell panel and GPU-card part
-	is WELDED (in Studio, not in this script) directly to its own rack
-	and unanchored, so it rides along automatically whenever the rack's
-	CFrame changes -- a GPU card is physically incapable of ending up on
-	a DIFFERENT rack than the one it's welded to, which is what makes
-	this safe to nudge around at all.
+	-- stay in that SAME one true built row, lined up exactly like tier
+	1's 4-rack row; tier 2 just reveals the rest of it, never splits it
+	into two aisles. From tier 3 on (2+ WHOLE columns unlocked), column 1
+	moves for the first time -- now as a whole solid aisle alongside
+	column 2 (also solid) -- but the two columns don't just sit at their
+	closer, natural spacing: column 1 flushes LEFT against the floor's
+	own fixed left edge, and whichever column is currently the LAST one
+	unlocked flushes RIGHT against the floor's own (extended) right edge,
+	widening the walkway between them to fill however much room the
+	floor actually has. Same client-only trick either way: a rack's TRUE
+	built position in Studio never changes, only what THIS player's
+	client draws it at -- and this script only ever moves the RACK part
+	itself. Every shell panel and GPU-card part is WELDED (in Studio, not
+	in this script) directly to its own rack and unanchored, so it rides
+	along automatically whenever the rack's CFrame changes -- a GPU card
+	is physically incapable of ending up on a DIFFERENT rack than the one
+	it's welded to, which is what makes this safe to nudge around at all.
 
 	The floor itself WIDENS once 2+ columns are unlocked, but only ever
 	from its RIGHT edge -- the LEFT edge (column 1's side) never moves
@@ -105,11 +103,11 @@ local racks = GPUs.getAllRacks()
 
 -- EVERY rack's TRUE built CFrame, captured right away, before anything
 -- else in this script ever has a chance to nudge one sideways. Every
--- later "where should this rack sit" calculation (the tier-2 split, the
--- tier-3+ column flush, and the floor's own right-edge math) reads
--- POSITIONS from here, never live off `racks[i].Position` -- a rack
--- that's already been nudged this render() would otherwise get
--- double-counted by whichever calculation runs after it moved.
+-- later "where should this rack sit" calculation (the tier-3+ column
+-- flush and the floor's own right-edge math) reads POSITIONS from here,
+-- never live off `racks[i].Position` -- a rack that's already been
+-- nudged this render() would otherwise get double-counted by whichever
+-- calculation runs after it moved.
 local originalCFrame = {}
 for i = 1, #racks do
 	originalCFrame[i] = racks[i].CFrame
@@ -282,63 +280,6 @@ local function updatePlatform(floorTier)
 end
 
 -- ---------- column layout, by tier ----------
--- Column 1's racks, grouped into physical ROWS -- consecutive racks
--- sharing the same Z, since GPUs.sortRacks already puts them in row
--- order front-to-back -- reads the actual built spacing instead of
--- hard-coding "4 racks per row," the same "detect it, don't hard-code
--- it" habit GPUs.sortRacks itself uses for column boundaries.
-local function groupIntoRows(rackIndices)
-	local rows = {}
-	local currentRow
-	for _, rackIndex in rackIndices do
-		local z = racks[rackIndex].Position.Z
-		if not currentRow or z ~= racks[currentRow[1]].Position.Z then
-			currentRow = {}
-			table.insert(rows, currentRow)
-		end
-		table.insert(currentRow, rackIndex)
-	end
-	return rows
-end
-
-local column1Indices = {}
-for i = 1, COLUMN_1_MAX_RACKS do
-	column1Indices[i] = i
-end
-local column1Rows = groupIntoRows(column1Indices)
-
--- Tier 2 ONLY: how wide a gap to open down the middle of column 1 --
--- picked so each half ends up FLUSH with the tier-1/2 platform's own
--- (unextended) left/right edge: the walkway is whatever's left over
--- after the row's own built width (leftmost rack's left edge to
--- rightmost rack's right edge) is subtracted from that width, split
--- evenly so both edges land flush at once.
-local WALKWAY_WIDTH = 0
-do
-	local firstRow = column1Rows[1]
-	if firstRow and #firstRow > 0 then
-		local leftmostRack = racks[firstRow[1]]
-		local rightmostRack = racks[firstRow[#firstRow]]
-		local rowSpan = (rightmostRack.Position.X + rightmostRack.Size.X / 2)
-			- (leftmostRack.Position.X - leftmostRack.Size.X / 2)
-		WALKWAY_WIDTH = math.max(0, platformWidth - rowSpan)
-	end
-end
-
--- rackIndex -> the sideways Vector3 nudge that rack needs for the
--- tier-2-only split -- the first half of each row (smaller X, the left
--- side) nudges left, the second half nudges right, so a row of racks
--- that used to touch in a single line now sits as two even pairs flush
--- with the tier-1/2 platform's edges, with a walkway between them.
-local splitOffset = {}
-for _, row in column1Rows do
-	local half = #row / 2
-	for position, rackIndex in row do
-		local side = position <= half and -1 or 1
-		splitOffset[rackIndex] = Vector3.new(side * WALKWAY_WIDTH / 2, 0, 0)
-	end
-end
-
 local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 
 -- Only the RACK part itself gets moved here -- every shell panel and
@@ -348,14 +289,14 @@ local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 -- wrong rack: it's not "the script remembered to move it," it's
 -- physically attached to one specific rack and nothing else.
 --
--- Column 1 gets one of three treatments depending on how many whole
--- columns are unlocked: tier 1 (0 columns) leaves it at its one true
--- built row; tier 2 (exactly 1 column) splits it into two aisles flush
--- with the tier-1/2 platform's own edges (WALKWAY_WIDTH above); tier 3+
--- (2+ columns) puts it back in one solid row, but shifted flush with the
--- FLOOR's own fixed left edge -- PLATFORM_RIGHT_MARGIN (the same
--- breathing room the floor already gives it there) is exactly how far
--- left it has to move to close that gap.
+-- Column 1 gets one of two treatments depending on how many whole
+-- columns are unlocked: tiers 1-2 (0-1 columns) leave it at its one true
+-- built row -- tier 2 just reveals the rest of that same row, lined up
+-- exactly like tier 1, never split into two aisles; tier 3+ (2+ columns)
+-- shifts it flush with the FLOOR's own fixed left edge --
+-- PLATFORM_RIGHT_MARGIN (the same breathing room the floor already
+-- gives it there) is exactly how far left it has to move to close that
+-- gap.
 --
 -- Whichever column is currently the LAST one unlocked (2+ columns only
 -- -- at 0-1 columns, that's column 1 itself, already handled above)
@@ -377,9 +318,7 @@ local function applyColumnLayout(floorTier)
 
 	for rackIndex = 1, COLUMN_1_MAX_RACKS do
 		local offset = Vector3.zero
-		if columnsCovered == 1 then
-			offset = splitOffset[rackIndex]
-		elseif columnsCovered >= 2 then
+		if columnsCovered >= 2 then
 			offset = Vector3.new(-PLATFORM_RIGHT_MARGIN, 0, 0)
 		end
 		racks[rackIndex].CFrame = originalCFrame[rackIndex] + offset

@@ -170,16 +170,16 @@ source code and reference art cannot restore the complete world. It contains:
   rows 16 studs apart, columns roughly 7-12 studs apart. Column 1's row
   is centered in `Platform`'s BUILT width (not flush to either edge) --
   the confirmed look for "every rack the Starter Row allows, before
-  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). While
-  EXACTLY one whole column is unlocked (`GPUs.floorTiers[2]`, "Column
-  1" -- tier 2 only), GPURackDisplay.client.lua nudges column 1's racks
-  sideways into two side-by-side columns flush with `Platform`'s own
-  left/right edges, with a walkway down the middle -- purely a
-  client-side illusion, same as the resizing floor. From tier 3 on (2+
-  whole columns unlocked), that within-column split goes away again:
-  column 1 sits back in its one true built row, now a whole solid aisle
-  alongside column 2 (also solid, never split) -- but the two columns
-  don't just sit at their closer, natural spacing. Column 1 flushes LEFT
+  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). While EXACTLY
+  one whole column is unlocked (`GPUs.floorTiers[2]`, "Column 1" -- tier
+  2 only), column 1 stays in that SAME one true built row -- tier 2 just
+  reveals the rest of it (12 more racks), lined up exactly like tier 1's
+  4-rack row, never split into two aisles. (An earlier version DID split
+  it into two side-by-side aisles with a walkway down the middle --
+  reverted because it didn't match tier 1's look.) From tier 3 on (2+
+  whole columns unlocked), column 1 moves for the first time: now a
+  whole solid aisle alongside column 2 (also solid) -- but the two
+  columns don't just sit at their closer, natural spacing. Column 1 flushes LEFT
   against `Platform`'s own fixed left edge, and whichever column is
   currently the LAST one unlocked flushes RIGHT against `Platform`'s own
   extended right edge (`PLATFORM_RIGHT_MARGIN` -- the same breathing
