@@ -94,10 +94,16 @@ GPUs.RACKS_PER_COLUMN = 16
 -- brand new player hits a real wall at 4 racks and has to buy into the
 -- floor itself (tier 2) to keep going. Tier 2 finishes out column 1 (the
 -- remaining 3 rows, racks 5-16) -- a player's first floor upgrade only
--- ever has to fill in the column they can already see. From tier 3 on,
--- each upgrade adds a whole NEW physical COLUMN -- 16 racks (4 rows
--- deep) -- matching the world, which has 64 Server_Racks built as 4 such
--- columns side by side, so Column 4 is the ceiling.
+-- ever has to fill in the column they can already see. Tier 3 adds
+-- column 2 (16 more racks, 32 total). Tier 4 -- the LAST upgrade there
+-- is -- adds BOTH remaining columns (3 and 4) at once, straight to the
+-- 64-rack ceiling: only 3 floor upgrades exist in total (tiers 2-4),
+-- not one per column, so there's no separate 48-rack checkpoint. It's
+-- still named "Column 4" (not "Columns 3-4") to match every other tier's
+-- naming, which names the LAST column the upgrade gives room for, not
+-- how many columns that particular purchase adds. This matches the
+-- world, which has 64 Server_Racks built as 4 columns side by side, so
+-- Column 4 is the ceiling either way.
 --
 -- Racks are numbered COLUMN first (left to right), then ROW within a
 -- column (front to back) -- see GPUs.sortRacks, which both
@@ -108,7 +114,6 @@ GPUs.floorTiers = {
 	{ name = "Starter Row", maxRacks = 4,  price = 0 },
 	{ name = "Column 1",    maxRacks = 16, price = 25000 },
 	{ name = "Column 2",    maxRacks = 32, price = 250000 },
-	{ name = "Column 3",    maxRacks = 48, price = 2500000 },
 	{ name = "Column 4",    maxRacks = 64, price = 25000000 },
 }
 

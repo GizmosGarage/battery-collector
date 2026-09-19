@@ -124,7 +124,9 @@ source code and reference art cannot restore the complete world. It contains:
   GPURackDisplay.client.lua's `updatePlatform` covers however many
   columns the player's floor tier actually reaches using the same
   formula regardless of column count, verified in Studio Play mode
-  through floorTier 5/64 racks (all 4 columns). GPURackDisplay.client.lua
+  through floorTier 4/64 racks (all 4 columns -- the last floor tier
+  there is, `GPUs.floorTiers[4]`, jumps straight from column 2 to
+  column 4). GPURackDisplay.client.lua
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
@@ -185,11 +187,13 @@ source code and reference art cannot restore the complete world. It contains:
   far each one has to move), widening the walkway between them to fill
   however much room the floor actually has, instead of leaving the
   natural, narrower gap. Any column strictly BETWEEN column 1 and the
-  last one (3-4 columns covered, i.e. tiers 4-5) stays at its true built
-  position -- verified in Studio Play mode at floorTier 5/64 racks:
-  column 1 and column 4 flush to the floor's edges exactly as they do at
-  tier 3, columns 2-3 sit untouched at their natural spacing between
-  them. The racks' BUILT (Edit-mode) position in Studio is always the
+  last one (3+ columns covered) stays at its true built position --
+  verified in Studio Play mode at floorTier 4/64 racks (the last floor
+  tier there is, `GPUs.floorTiers[4]`, jumps straight from column 2 to
+  column 4 -- there's no separate 3-column checkpoint): column 1 and
+  column 4 flush to the floor's edges exactly as they do at tier 3,
+  columns 2-3 sit untouched at their natural spacing between them.
+  The racks' BUILT (Edit-mode) position in Studio is always the
   single centered row -- every layout above is a client-side illusion on
   top of it, and `GPUs.dataCenterCenterX` (used for the Pad/Sign) still
   lands on the correct walkway midpoint either way, since flushing both

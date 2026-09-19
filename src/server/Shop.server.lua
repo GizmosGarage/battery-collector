@@ -180,6 +180,15 @@ local function setupPlayer(player)
 			end
 		end
 	end
+	-- Clamp floorTier itself first -- a save from before a floor tier was
+	-- ever REMOVED (e.g. the old "Column 3", 48-rack checkpoint that used
+	-- to sit between "Column 2" and "Column 4") can hold an index past the
+	-- end of the CURRENT GPUs.floorTiers, which would otherwise leave this
+	-- player's FloorTier attribute pointing at nil and crash the first
+	-- script that indexes it (ShopUI.client.lua's Data Center Shop panel).
+	-- Falling back to the new largest tier costs a returning player
+	-- nothing -- they already had the room such a save implies.
+	floorTier = math.min(floorTier, #GPUs.floorTiers)
 	-- Clamp racksOwned to what the floor tier actually allows (defensive,
 	-- same spirit as the levels clamp above) in case the two ever disagree.
 	racksOwned = math.min(racksOwned, GPUs.maxRacksForTier(floorTier) or racksOwned)
