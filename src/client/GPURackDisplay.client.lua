@@ -53,16 +53,29 @@
 	moves for the first time -- now as a whole solid aisle alongside
 	column 2 (also solid) -- but the two columns don't just sit at their
 	closer, natural spacing: column 1 flushes LEFT against the floor's
-	own fixed left edge, and whichever column is currently the LAST one
-	unlocked flushes RIGHT against the floor's own (extended) right edge,
-	widening the walkway between them to fill however much room the
-	floor actually has. Same client-only trick either way: a rack's TRUE
-	built position in Studio never changes, only what THIS player's
-	client draws it at -- and this script only ever moves the RACK part
-	itself. Every shell panel and GPU-card part is WELDED (in Studio, not
-	in this script) directly to its own rack and unanchored, so it rides
-	along automatically whenever the rack's CFrame changes -- a GPU card
-	is physically incapable of ending up on a DIFFERENT rack than the one
+	own fixed left edge, and column 2 flushes RIGHT against the floor's
+	own (extended) right edge, widening the walkway between them to fill
+	however much room the floor actually has.
+
+	Tier 4 (all 4 columns, GPUs.floorTiers[4]) goes further still: rather
+	than only the OUTER two columns (1 and 4) moving while 2 and 3 sit at
+	their closer, natural built spacing, EVERY column from 2 on gets
+	spaced the SAME distance from its neighbor (the widest gap any two
+	columns were already built with -- see WIDEST_NATURAL_GAP) -- so
+	every walkway between every pair of columns ends up equally wide,
+	instead of the two middle columns sitting oddly close together
+	between two much wider outer walkways. With 4 equal-width columns
+	evenly spaced like that, the dump-off Pad (see below) naturally lands
+	exactly between columns 2 and 3 -- the true middle of the whole row --
+	without needing any separate "center the pad" logic of its own.
+
+	Same client-only trick every tier: a rack's TRUE built position in
+	Studio never changes, only what THIS player's client draws it at --
+	and this script only ever moves the RACK part itself. Every shell
+	panel and GPU-card part is WELDED (in Studio, not in this script)
+	directly to its own rack and unanchored, so it rides along
+	automatically whenever the rack's CFrame changes -- a GPU card is
+	physically incapable of ending up on a DIFFERENT rack than the one
 	it's welded to, which is what makes this safe to nudge around at all.
 
 	The floor itself WIDENS once 2+ columns are unlocked, but only ever
@@ -214,16 +227,81 @@ local platformX, platformY, platformWidth, platformHeight =
 	platform.Position.X, platform.Position.Y, platform.Size.X, platform.Size.Y
 local platformLeftEdge = platformX - platformWidth / 2
 local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
+local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
+
+-- Column c's TRUE built left/right edge (that column's front row, leftmost
+-- rack's left edge to rightmost rack's right edge) -- read once from
+-- originalCFrame, the same "read the world instead of hard-coding it"
+-- habit GPUs.sortRacks already uses for column boundaries. Every column
+-- shares the same width (they're identical rows of touching racks), so
+-- this is really just "where does column c happen to sit," reusable by
+-- both the margin below and the tier-4 equal-gap spacing further down.
+local trueColLeft, trueColRight = {}, {}
+for c = 1, TOTAL_COLUMNS do
+	local firstRack = (c - 1) * GPUs.RACKS_PER_COLUMN + 1
+	local lastFrontRowRack = firstRack + 3
+	trueColLeft[c] = originalCFrame[firstRack].Position.X - racks[firstRack].Size.X / 2
+	trueColRight[c] = originalCFrame[lastFrontRowRack].Position.X + racks[lastFrontRowRack].Size.X / 2
+end
 
 -- How far the floor's BUILT right edge sits past column 1's own right
 -- edge -- the same breathing room the floor already gives column 1 on
--- its (fixed) left side, reused three ways below: how far the floor's
--- own right edge extends past whichever column is last covered, AND how
--- far THAT column has to shift right (and column 1 left) to land flush
--- with the floor's edges -- see applyColumnLayout. Computed once, here,
--- from column 1's TRUE built position (originalCFrame[4], row 1's
--- rightmost -- every row shares the same X).
-local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - (originalCFrame[4].Position.X + racks[4].Size.X / 2)
+-- its (fixed) left side, reused below: how far the floor's own right
+-- edge extends past whichever column is last covered (2 columns only --
+-- see WIDEST_NATURAL_GAP for 3+), AND how far that column has to shift
+-- right (and column 1 left) to land flush with the floor's edges -- see
+-- computeColumnOffsets.
+local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - trueColRight[1]
+
+-- Tier 4 ONLY (3+ whole columns covered): the widest gap BETWEEN any two
+-- ADJACENT columns, as they were actually built -- column 1 and 2 were
+-- built closer together than columns 2-3 and 3-4 (see the README). Using
+-- this as the SAME gap between every covered column (computeColumnOffsets
+-- below), instead of each pair's own narrower built gap, means no pair
+-- ends up closer than any other, and no gap ever has to shrink to become
+-- equal -- the floor only ever grows to fit the widest one already there.
+local WIDEST_NATURAL_GAP = 0
+for c = 1, TOTAL_COLUMNS - 1 do
+	WIDEST_NATURAL_GAP = math.max(WIDEST_NATURAL_GAP, trueColLeft[c + 1] - trueColRight[c])
+end
+
+-- The X offset to apply to column c's TRUE built position, for c = 1
+-- through however many columns are covered -- the ONE place both
+-- applyColumnLayout (moves the racks) and updatePlatform (sizes the
+-- floor around wherever the last covered column ends up) compute this,
+-- so the two can never disagree about where a column actually sits.
+--   Fewer than 2 columns covered (tiers 1-2): returns an empty table --
+--     no column moves; applyColumnLayout/updatePlatform each already
+--     handle that case on their own.
+--   Exactly 2 columns covered (tier 3): column 1 flushes LEFT and column
+--     2 flushes RIGHT by PLATFORM_RIGHT_MARGIN each -- unchanged from
+--     before. With only one gap total, it's already "equal to itself,"
+--     nothing more to do.
+--   3+ columns covered (tier 4): column 1 still flushes LEFT the same
+--     way, but every column from 2 on is placed WIDEST_NATURAL_GAP past
+--     the previous column's (now-shifted) right edge -- so every covered
+--     column ends up the same distance from its neighbor, not just the
+--     two outer ones. The last covered column's resulting right edge is
+--     what the floor flushes its own right edge against.
+local function computeColumnOffsets(columnsCovered)
+	local offset = {}
+	if columnsCovered < 2 then
+		return offset
+	end
+
+	offset[1] = -PLATFORM_RIGHT_MARGIN
+	if columnsCovered == 2 then
+		offset[2] = PLATFORM_RIGHT_MARGIN
+	else
+		local liveRight = trueColRight[1] + offset[1]
+		for c = 2, columnsCovered do
+			local liveLeft = liveRight + WIDEST_NATURAL_GAP
+			offset[c] = liveLeft - trueColLeft[c]
+			liveRight = trueColRight[c] + offset[c]
+		end
+	end
+	return offset
+end
 
 -- Tier 2 ONLY: extra breathing room to add to EACH side of the floor,
 -- beyond the built margin above -- Ethan wants tier 2's clearance a
@@ -255,14 +333,14 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 -- outward by TIER_2_EXTRA_CLEARANCE (see above) for a little more
 -- breathing room next to that one full column, without moving the racks
 -- or recentering the floor. From tier 3 on, only the RIGHT edge extends
--- outward, to stay flush (plus PLATFORM_RIGHT_MARGIN) with the
--- rightmost RACK now in play. Reads that rack's TRUE position from
--- originalCFrame, not live off `racks` -- applyColumnLayout may have
--- already flushed that SAME rack rightward by the time this runs (see
--- render()), and measuring its already-shifted position here would
--- double-count the margin. That's what opens the walkway up in the
--- MIDDLE of the floor instead of the whole floor recentering around it
--- every time a new column unlocks.
+-- outward, to stay flush with wherever computeColumnOffsets puts the
+-- last covered column's right edge -- reads TRUE positions plus that
+-- SAME offset table, never live off `racks` -- applyColumnLayout may
+-- have already moved that column by the time this runs (see render()),
+-- and measuring its already-shifted position here would double-count
+-- the offset. That's what opens the walkway up in the MIDDLE of the
+-- floor instead of the whole floor recentering around it every time a
+-- new column unlocks.
 local function updatePlatform(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
@@ -278,9 +356,8 @@ local function updatePlatform(floorTier)
 		leftEdge = leftEdge - TIER_2_EXTRA_CLEARANCE
 		rightEdge = rightEdge + TIER_2_EXTRA_CLEARANCE
 	elseif columnsCovered >= 2 then
-		local rightRackIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
-		local rightRackTrueX = originalCFrame[rightRackIndex].Position.X
-		rightEdge = (rightRackTrueX + racks[rightRackIndex].Size.X / 2) + PLATFORM_RIGHT_MARGIN
+		local columnOffset = computeColumnOffsets(columnsCovered)
+		rightEdge = trueColRight[columnsCovered] + columnOffset[columnsCovered]
 	end
 	local width = rightEdge - leftEdge
 	local centerX = (leftEdge + rightEdge) / 2
@@ -296,8 +373,6 @@ local function updatePlatform(floorTier)
 end
 
 -- ---------- column layout, by tier ----------
-local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
-
 -- Only the RACK part itself gets moved here -- every shell panel and
 -- GPU-card part is welded (in Studio) directly to its own rack and
 -- unanchored, so the whole assembly rides along automatically. That's
@@ -309,44 +384,35 @@ local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 -- columns are unlocked: tiers 1-2 (0-1 columns) leave it at its one true
 -- built row -- tier 2 just reveals the rest of that same row, lined up
 -- exactly like tier 1, never split into two aisles; tier 3+ (2+ columns)
--- shifts it flush with the FLOOR's own fixed left edge --
--- PLATFORM_RIGHT_MARGIN (the same breathing room the floor already
--- gives it there) is exactly how far left it has to move to close that
--- gap.
+-- shifts it flush with the FLOOR's own fixed left edge (see
+-- computeColumnOffsets).
 --
--- Whichever column is currently the LAST one unlocked (2+ columns only
--- -- at 0-1 columns, that's column 1 itself, already handled above)
--- flushes RIGHT the same way, against the floor's own extended right
--- edge -- see updatePlatform for why that edge is always exactly
--- PLATFORM_RIGHT_MARGIN past that column's true right edge, which is
--- what makes "shift right by PLATFORM_RIGHT_MARGIN" land it exactly
--- flush. Together, flushing column 1 left and the last column right is
--- what widens the walkway between them, instead of leaving the columns
--- at their closer, natural spacing. Any column strictly BETWEEN column 1
--- and the last one (3+ columns covered) stays at its true built
--- position -- verified in Studio at floorTier 4/64 racks (the last
--- tier, GPUs.floorTiers[4], jumps straight from column 2 to column 4):
--- column 1 and column 4 flush to the floor's edges, columns 2-3 sit
--- untouched at their natural spacing between them.
+-- At exactly 2 columns (tier 3), column 2 flushes RIGHT the same way,
+-- against the floor's own extended right edge, widening the one walkway
+-- between them to fill however much room the floor has. At 3+ columns
+-- (tier 4), EVERY column from 2 on -- not just the last one -- gets
+-- spaced WIDEST_NATURAL_GAP from its neighbor, so the gaps beside
+-- columns 2 and 3 are exactly as wide as the gap beside column 1 and the
+-- last column, instead of columns 2-3 sitting at their narrower natural
+-- spacing while only the outer walkways widen. That's also what puts the
+-- dump-off pad exactly between columns 2 and 3 -- see
+-- GPUs.dataCenterCenterX, which centers on column 1's left edge and the
+-- last column's right edge; with every column the same width and every
+-- gap the same size, that midpoint always falls in the middle of the
+-- MIDDLE gap.
 local function applyColumnLayout(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
+	local columnOffset = computeColumnOffsets(columnsCovered)
 
 	for rackIndex = 1, COLUMN_1_MAX_RACKS do
-		local offset = Vector3.zero
-		if columnsCovered >= 2 then
-			offset = Vector3.new(-PLATFORM_RIGHT_MARGIN, 0, 0)
-		end
-		racks[rackIndex].CFrame = originalCFrame[rackIndex] + offset
+		racks[rackIndex].CFrame = originalCFrame[rackIndex] + Vector3.new(columnOffset[1] or 0, 0, 0)
 	end
 
 	for columnIndex = 2, TOTAL_COLUMNS do
 		local firstRack = (columnIndex - 1) * GPUs.RACKS_PER_COLUMN + 1
 		local lastRack = math.min(columnIndex * GPUs.RACKS_PER_COLUMN, #racks)
-		local offset = Vector3.zero
-		if columnIndex == columnsCovered then
-			offset = Vector3.new(PLATFORM_RIGHT_MARGIN, 0, 0)
-		end
+		local offset = Vector3.new(columnOffset[columnIndex] or 0, 0, 0)
 		for rackIndex = firstRack, lastRack do
 			racks[rackIndex].CFrame = originalCFrame[rackIndex] + offset
 		end

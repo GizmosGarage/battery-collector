@@ -134,9 +134,9 @@ source code and reference art cannot restore the complete world. It contains:
   RIGHT edge -- the LEFT edge is always the floor's own BUILT left edge
   and NEVER moves, so the room a player already knows from tiers 1-2
   stays exactly where it was; only the right edge extends, once 2+ whole
-  columns are unlocked, to stay flush with the rightmost RACK now in
-  play (plus `PLATFORM_RIGHT_MARGIN`, the same breathing room the floor
-  already gives column 1 on its fixed left side). A version that
+  columns are unlocked, to stay flush with wherever the rightmost column
+  ends up (see the Server_Rack bullet below for exactly how far that is
+  at 2 columns versus 3+). A version that
   recentered the WHOLE floor around both outer edges symmetrically was
   tried and reverted -- it moved the tier-1/2 side a player already
   knows, which is exactly what this asymmetric version avoids. Its
@@ -180,25 +180,34 @@ source code and reference art cannot restore the complete world. It contains:
   whole columns unlocked), column 1 moves for the first time: now a
   whole solid aisle alongside column 2 (also solid) -- but the two
   columns don't just sit at their closer, natural spacing. Column 1 flushes LEFT
-  against `Platform`'s own fixed left edge, and whichever column is
-  currently the LAST one unlocked flushes RIGHT against `Platform`'s own
-  extended right edge (`PLATFORM_RIGHT_MARGIN` -- the same breathing
-  room the floor already gives column 1 on its left -- is exactly how
-  far each one has to move), widening the walkway between them to fill
-  however much room the floor actually has, instead of leaving the
-  natural, narrower gap. Any column strictly BETWEEN column 1 and the
-  last one (3+ columns covered) stays at its true built position --
-  verified in Studio Play mode at floorTier 4/64 racks (the last floor
-  tier there is, `GPUs.floorTiers[4]`, jumps straight from column 2 to
-  column 4 -- there's no separate 3-column checkpoint): column 1 and
-  column 4 flush to the floor's edges exactly as they do at tier 3,
-  columns 2-3 sit untouched at their natural spacing between them.
+  against `Platform`'s own fixed left edge, and column 2 flushes RIGHT
+  against `Platform`'s own extended right edge (`PLATFORM_RIGHT_MARGIN`
+  -- the same breathing room the floor already gives column 1 on its
+  left -- is exactly how far each one has to move), widening the one
+  walkway between them to fill however much room the floor actually
+  has, instead of leaving the natural, narrower gap.
+
+  Tier 4 (all 4 columns, `GPUs.floorTiers[4]`, which jumps straight from
+  column 2 to column 4 -- there's no separate 3-column checkpoint) goes
+  further: instead of only columns 1 and 4 moving while 2 and 3 sit at
+  their closer, natural built spacing (6.86 studs, versus ~12.02 studs
+  between 2-3 and 3-4 -- see `WIDEST_NATURAL_GAP` in
+  GPURackDisplay.client.lua), EVERY column from 2 on is spaced that same
+  widest natural gap from its neighbor, so all three walkways end up
+  equally wide (verified in Studio: 12.0196 studs each) instead of the
+  two middle columns sitting oddly close together. `Platform` flushes to
+  column 1's left edge and column 4's right edge exactly as before,
+  just wider to fit (91.18 studs, versus 96.25 under the old
+  columns-2-3-untouched version) -- and with 4 equal-width columns
+  evenly spaced like that, `GPUs.dataCenterCenterX` (still just
+  "midpoint between column 1's left edge and the last column's right
+  edge," no special-casing added) lands EXACTLY in the middle of the gap
+  between columns 2 and 3 -- confirmed in Studio to within
+  floating-point rounding (off by 0.000001 studs).
+
   The racks' BUILT (Edit-mode) position in Studio is always the
   single centered row -- every layout above is a client-side illusion on
-  top of it, and `GPUs.dataCenterCenterX` (used for the Pad/Sign) still
-  lands on the correct walkway midpoint either way, since flushing both
-  sides outward by the same `PLATFORM_RIGHT_MARGIN` amount widens the
-  gap without moving its center.
+  top of it.
   Each rack is a `MeshPart` holding its own 4 GPU-card `Model`s, named
   bottom to top `GPU_Bottom`, `GPU_Bottom_Middle`, `GPU_Top_Middle`,
   `GPU_Top`. Every shell panel (`Panel_Back`/`Left`/`Right`/`Top`) and
