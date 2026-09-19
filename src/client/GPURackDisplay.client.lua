@@ -44,20 +44,22 @@
 	waiting, instead of the floor creeping out one row at a time as racks
 	get bought into it.
 
-	Tiers 1 and 3 never move column 1 at all -- tier 1 shows row 1 alone
-	(4 racks) and tier 3 shows the WHOLE column (all 16 racks, rows 1-4)
-	exactly the way it was built, never split into two aisles the way an
-	earlier version of this file tried and reverted. Tier 2 (8 racks,
-	GPUs.floorTiers[2]) is the odd one out: rather than stacking row 2
-	BEHIND row 1 the way they were actually built (16 studs apart in Z),
-	it moves row 2 sideways AND forward onto row 1's own depth, so the
-	two rows read as two side-by-side blocks -- a walkway between them,
-	both equally close to the player -- instead of one block deeper than
-	the other (see computeRowOffsets). Both rows shift an EQUAL distance
-	from their own shared natural center (ROW_CENTER_X), which is what
-	keeps the dump-off Pad (see below) landing on the correct X without
-	needing to know anything about this split -- the same shared formula
-	that works for every other tier still works here.
+	Tier 1 never moves column 1 at all -- it shows row 1 alone (4 racks)
+	exactly the way it was built. Tiers 2-3 (8 and 16 racks,
+	GPUs.floorTiers[2..3]) are the odd ones out: rather than stacking
+	rows front-to-back the way they were actually built (16 studs apart
+	in Z), every row moves sideways onto one of exactly 2 SIDES (odd rows
+	left, even rows right) -- so tier 2's 2 rows read as two side-by-side
+	blocks, one row deep each, a walkway between them, both equally close
+	to the player. Tier 3's extra 2 rows go BEHIND those same two blocks
+	(one ROW_SPACING further back, on their own matching side) rather
+	than opening a third or fourth block -- so tier 3 looks like tier 2's
+	same two aisles, just 2 rows deep now instead of 1 (see
+	computeRowOffsets and ROW_SPLIT_SIDES). Both sides shift an EQUAL
+	distance from their shared natural center (ROW_CENTER_X), which is
+	what keeps the dump-off Pad (see below) landing on the correct X
+	without needing to know anything about this split -- the same shared
+	formula that works for every other tier still works here.
 
 	From tier 4 on (2+ WHOLE columns unlocked), column 1 moves for the
 	first time -- now as a whole solid aisle alongside column 2 (also
@@ -91,12 +93,14 @@
 	The floor itself WIDENS once 2+ columns are unlocked, but only ever
 	from its RIGHT edge -- the LEFT edge (column 1's side) never moves
 	from its original built position, so the room a player already knows
-	from tiers 1 and 3 stays exactly where it was; the walkway just opens
-	up further into the middle of a wider floor instead of the whole
-	floor recentering around it -- see updatePlatform below. Tier 2 is
-	the one tier that DOES recenter: since its two rows spread out evenly
-	from their shared natural center rather than flushing one fixed edge,
-	the floor grows from BOTH sides at once, centered on that same point.
+	from tier 1 stays exactly where it was; the walkway just opens up
+	further into the middle of a wider floor instead of the whole floor
+	recentering around it -- see updatePlatform below. Tiers 2-3 are the
+	exception that DOES recenter: since their row-split sides spread out
+	evenly from their shared natural center rather than flushing one
+	fixed edge, the floor grows from BOTH sides at once, centered on that
+	same point -- tier 3 just needs a DEEPER floor than tier 2 to fit its
+	extra row per side, not a wider one (same width, both tiers).
 	The battery dump-off Pad and its Sign move independently of the
 	floor's own shape, staying centered on the WALKWAY itself -- but
 	unlike everything else in this file, that's NOT a purely cosmetic
@@ -287,51 +291,66 @@ local RACKS_PER_ROW = 4
 -- Row 1's own TRUE built width and center -- EVERY row in EVERY column
 -- shares this exact width and X-range (rows only differ in Z, never X),
 -- so "row 1's own edges" doubles as "any row's own edges." Reused below
--- for tier 2's side-by-side layout, which needs to know how wide ONE row
--- is and where its natural (unmoved) center sits.
+-- for the row-split layout, which needs to know how wide ONE row is and
+-- where its natural (unmoved) center sits.
 local ROW_WIDTH = trueColRight[1] - trueColLeft[1]
 local ROW_CENTER_X = (trueColLeft[1] + trueColRight[1]) / 2
 
--- Tier 2 ONLY: how wide a walkway to leave between the two BUILT rows
--- once they're spread out side by side -- reusing WIDEST_NATURAL_GAP
--- (rather than inventing a new number) just for a consistent "how wide
--- is a walkway in this game" feel with the column split above.
+-- How far apart (in Z) two CONSECUTIVE built rows sit -- row 2's own true
+-- Z minus row 1's, read from the world rather than hard-coded (same "read
+-- it, don't assume it" habit as everything else measured off
+-- originalCFrame in this file). Reused below to stack rows BEHIND each
+-- other within one side of the row-split layout.
+local ROW_SPACING = originalCFrame[RACKS_PER_ROW + 1].Position.Z - originalCFrame[1].Position.Z
+
+-- Tiers 2-3 ONLY: how wide a walkway to leave between the two SIDE-BY-SIDE
+-- groups of rows -- reusing WIDEST_NATURAL_GAP (rather than inventing a
+-- new number) just for a consistent "how wide is a walkway in this game"
+-- feel with the column split further down.
 local ROW_SPLIT_WALKWAY = WIDEST_NATURAL_GAP
 
+-- The row-split layout always uses exactly 2 side-by-side groups (left
+-- and right) -- what changes tier to tier is how many rows DEEP each
+-- side goes, not how many sides there are. Tier 2 (8 racks) is 2 sides,
+-- 1 row deep each; tier 3 (16 racks, the whole column) is the SAME 2
+-- sides, just 2 rows deep each -- the two rows tier 3 adds go BEHIND the
+-- two tier 2 already shows, not beside them.
+local ROW_SPLIT_SIDES = 2
+
 -- True for exactly the capacities that need MORE than one of column 1's
--- built rows but AREN'T a whole column yet -- today that's only tier 2
--- (8 racks, GPUs.floorTiers[2]). Tier 1 (4 racks, one row) and tier 3
--- (16 racks, the whole column, still one un-split row-of-rows) both fall
--- outside this range and keep their existing, simpler treatment.
+-- built rows -- today that's tiers 2 and 3 (8 and 16 racks). Tier 1 (4
+-- racks, a single row) falls outside this range and keeps its simpler,
+-- unmoved treatment.
 local function isRowSplitCapacity(capacity)
-	return capacity > RACKS_PER_ROW and capacity < GPUs.RACKS_PER_COLUMN
+	return capacity > RACKS_PER_ROW and capacity <= GPUs.RACKS_PER_COLUMN
 end
 
--- rowIndex (1, 2, ...) -> the X offset to apply to THAT row's 4 racks,
--- for a row-split capacity. Spreads however many rows are needed evenly
--- side by side, centered on ROW_CENTER_X -- row 1's own natural center,
--- which every row already shares -- rather than flush to the floor's
--- fixed left edge the way columns are (see computeColumnOffsets). That
--- centering is deliberate, not just simpler: it's what lets
--- GPUs.dataCenterCenterX (the pad's shared formula) land on the exact
--- same X whether it reads these racks' TRUE positions (as the SERVER
--- always does) or their shifted ones (as the client does after
--- applyColumnLayout runs) -- shifting every row an EQUAL distance from
--- the SAME natural center can't change that center, no matter how far
--- the shift is, which is not true of a flush-to-one-fixed-edge shift.
+-- side (1 or 2) -> the X offset to apply to every row on THAT side, for
+-- any row-split capacity. Always spaces the SAME 2 groups side by side,
+-- centered on ROW_CENTER_X -- row 1's own natural center, which every
+-- row already shares -- rather than flush to the floor's fixed left edge
+-- the way columns are (see computeColumnOffsets). That centering is
+-- deliberate, not just simpler: it's what lets GPUs.dataCenterCenterX
+-- (the pad's shared formula) land on the exact same X whether it reads
+-- these racks' TRUE positions (as the SERVER always does) or their
+-- shifted ones (as the client does after applyColumnLayout runs) --
+-- shifting every side an EQUAL distance from the SAME natural center
+-- can't change that center, no matter how far the shift is, which is not
+-- true of a flush-to-one-fixed-edge shift. Doesn't depend on how many
+-- rows deep each side goes -- that's depth (Z), a separate concern
+-- handled in applyColumnLayout -- only which 2 X's the sides sit at.
 -- Returns an empty table when `capacity` isn't a row-split capacity, so
--- callers can treat "no entry for row 1" as "nothing to do here."
+-- callers can treat "no entry for side 1" as "nothing to do here."
 local function computeRowOffsets(capacity)
 	local offset = {}
 	if not isRowSplitCapacity(capacity) then
 		return offset
 	end
 
-	local rowsNeeded = capacity // RACKS_PER_ROW
-	local totalWidth = rowsNeeded * ROW_WIDTH + (rowsNeeded - 1) * ROW_SPLIT_WALKWAY
+	local totalWidth = ROW_SPLIT_SIDES * ROW_WIDTH + (ROW_SPLIT_SIDES - 1) * ROW_SPLIT_WALKWAY
 	local liveLeft = ROW_CENTER_X - totalWidth / 2
-	for row = 1, rowsNeeded do
-		offset[row] = liveLeft - trueColLeft[1]
+	for side = 1, ROW_SPLIT_SIDES do
+		offset[side] = liveLeft - trueColLeft[1]
 		liveLeft = liveLeft + ROW_WIDTH + ROW_SPLIT_WALKWAY
 	end
 	return offset
@@ -376,16 +395,6 @@ local function computeColumnOffsets(columnsCovered)
 	return offset
 end
 
--- Tier 3 ONLY (exactly one whole column, 16 racks, revealed as a single
--- row): extra breathing room to add to EACH side of the floor, beyond
--- the built margin above -- Ethan wants that tier's clearance a little
--- more generous than tiers 1-2's without moving the racks or the
--- floor's center, so this only ever widens the floor symmetrically
--- around the row it already has (see updatePlatform). Not used for any
--- other tier -- tiers 1-2 stay exactly as built, and tier 4+ keeps its
--- own flush-to-the-last-column sizing untouched.
-local COLUMN_1_EXTRA_CLEARANCE = 2
-
 -- The battery dump-off Pad and its floating Sign move independently of
 -- the floor's own shape -- centered on the WALKWAY itself (see
 -- GPUs.dataCenterCenterX), not the floor's own midpoint, since the
@@ -399,48 +408,51 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 
 -- DEPTH always stays keyed to column 1's own rows (every column shares
 -- the same 4 row positions, so this never needs to change once a WHOLE
--- column's worth of depth is reached) -- reads Z live off `racks`, which
--- is fine, since nothing in this script ever touches a rack's Z EXCEPT
--- applyColumnLayout's row-split case (tier 2), which collapses every row
--- onto row 1's own Z -- so depth for a row-split capacity is always just
--- ONE row deep (RACKS_PER_ROW), same as tier 1, never row 2's (otherwise
--- untouched) deeper Z. The LEFT edge stays at the floor's own BUILT
--- position for tier 1 and every tier from 4 on (flush with column 1's
--- side, exactly where a player already knows it) -- tier 3 is one
--- exception, nudging BOTH edges outward by COLUMN_1_EXTRA_CLEARANCE (see
--- above) for a little more breathing room next to that one full column;
--- tier 2 (a row-split capacity) is the other, widening (and RECENTERING
--- -- see computeRowOffsets for why centering, not flushing one edge, is
--- what keeps the pad formula safe here) around ROW_CENTER_X instead of
--- anywhere near the floor's fixed left edge. From tier 4 on, only the
--- RIGHT edge extends outward, to stay flush with wherever
--- computeColumnOffsets puts the last covered column's right edge --
--- reads TRUE positions plus that SAME offset table, never live off
--- `racks` -- applyColumnLayout may have already moved that column by the
--- time this runs (see render()), and measuring its already-shifted
--- position here would double-count the offset. That's what opens the
--- walkway up in the MIDDLE of the floor instead of the whole floor
--- recentering around it every time a new column unlocks.
+-- column's worth of depth is reached) -- reads Z live off `racks` for
+-- the non-row-split tiers, which is fine, since nothing touches a
+-- rack's Z there. A row-split capacity (tiers 2-3) instead computes
+-- depth ANALYTICALLY, from row 1's TRUE Z plus however many ROW_SPACINGs
+-- deep that side goes (see ROW_SPLIT_SIDES) -- it can't just read a
+-- rack's live Z the way the others do, because applyColumnLayout may
+-- have already collapsed that exact rack onto a DIFFERENT depth by the
+-- time this runs. The LEFT edge stays at the floor's own BUILT position
+-- for tier 1 and every tier from 4 on (flush with column 1's side,
+-- exactly where a player already knows it) -- a row-split capacity is
+-- the one exception, widening (and RECENTERING -- see computeRowOffsets
+-- for why centering, not flushing one edge, is what keeps the pad
+-- formula safe here) around ROW_CENTER_X instead of anywhere near the
+-- floor's fixed left edge. From tier 4 on, only the RIGHT edge extends
+-- outward, to stay flush with wherever computeColumnOffsets puts the
+-- last covered column's right edge -- reads TRUE positions plus that
+-- SAME offset table, never live off `racks` -- applyColumnLayout may
+-- have already moved that column by the time this runs (see render()),
+-- and measuring its already-shifted position here would double-count
+-- the offset. That's what opens the walkway up in the MIDDLE of the
+-- floor instead of the whole floor recentering around it every time a
+-- new column unlocks.
 local function updatePlatform(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN
 	local rowSplit = isRowSplitCapacity(capacity)
 
-	local reachedIndex = rowSplit and RACKS_PER_ROW or math.max(1, math.min(capacity, COLUMN_1_MAX_RACKS))
-	local reachedRack = racks[reachedIndex]
-	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
-	local depth = backEdge - platformFrontEdge
+	local depth
+	if rowSplit then
+		local rowsPerSide = capacity // (RACKS_PER_ROW * ROW_SPLIT_SIDES)
+		local backEdge = originalCFrame[1].Position.Z + (rowsPerSide - 1) * ROW_SPACING + racks[1].Size.Z / 2
+		depth = backEdge - platformFrontEdge
+	else
+		local reachedIndex = math.max(1, math.min(capacity, COLUMN_1_MAX_RACKS))
+		local reachedRack = racks[reachedIndex]
+		local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
+		depth = backEdge - platformFrontEdge
+	end
 
 	local leftEdge = platformLeftEdge
 	local rightEdge = platformX + platformWidth / 2
 	if rowSplit then
-		local rowsNeeded = capacity // RACKS_PER_ROW
-		local totalWidth = rowsNeeded * ROW_WIDTH + (rowsNeeded - 1) * ROW_SPLIT_WALKWAY
+		local totalWidth = ROW_SPLIT_SIDES * ROW_WIDTH + (ROW_SPLIT_SIDES - 1) * ROW_SPLIT_WALKWAY
 		leftEdge = ROW_CENTER_X - totalWidth / 2
 		rightEdge = ROW_CENTER_X + totalWidth / 2
-	elseif columnsCovered == 1 then
-		leftEdge = leftEdge - COLUMN_1_EXTRA_CLEARANCE
-		rightEdge = rightEdge + COLUMN_1_EXTRA_CLEARANCE
 	elseif columnsCovered >= 2 then
 		local columnOffset = computeColumnOffsets(columnsCovered)
 		rightEdge = trueColRight[columnsCovered] + columnOffset[columnsCovered]
@@ -466,18 +478,20 @@ end
 -- wrong rack: it's not "the script remembered to move it," it's
 -- physically attached to one specific rack and nothing else.
 --
--- Column 1 gets one of three treatments. Tiers 1 and 3 (a single row, or
--- the whole column as one un-split block of rows) leave it at its one
--- true built position -- no offset at all. Tier 2 (a row-split capacity
--- -- see computeRowOffsets) is the odd one out: instead of stacking its
--- 2 rows front-to-back the way they were built, each row's 4 racks move
--- BOTH sideways (computeRowOffsets' X) AND forward/back onto row 1's own
--- Z (collapsing what was "row 2" onto "row 1's depth, but shifted over")
--- -- so the two rows read as two side-by-side blocks at the SAME
--- distance from the player, not one behind the other. Tier 4+ (2+
--- columns) shifts column 1 flush with the FLOOR's own fixed left edge
--- (see computeColumnOffsets) -- a completely different, one-sided kind
--- of widening than tier 2's centered one, since by then the floor's
+-- Column 1 gets one of three treatments. Tier 1 (a single row) leaves it
+-- at its one true built position -- no offset at all. Tiers 2-3 (a
+-- row-split capacity -- see computeRowOffsets) are the odd ones out:
+-- instead of stacking rows front-to-back the way they were built, each
+-- BUILT row moves sideways onto whichever of the 2 sides it belongs to
+-- (odd rows left, even rows right) AND forward/back onto that SIDE's own
+-- stack of depths, starting from row 1's Z and going back one
+-- ROW_SPACING per extra row on that side -- so tier 2's 2 rows read as
+-- two side-by-side blocks 1 row deep, and tier 3's 4 rows read as those
+-- SAME two blocks, now 2 rows deep -- the 2 rows tier 3 adds go BEHIND
+-- the 2 tier 2 already shows, not beside them. Tier 4+ (2+ columns)
+-- shifts column 1 flush with the FLOOR's own fixed left edge (see
+-- computeColumnOffsets) -- a completely different, one-sided kind of
+-- widening than the row-split's centered one, since by then the floor's
 -- LEFT edge has already been claimed as "the one thing that never moves"
 -- (see updatePlatform).
 --
@@ -501,13 +515,16 @@ local function applyColumnLayout(floorTier)
 	local rowOffsetX = computeRowOffsets(capacity)
 
 	if next(rowOffsetX) then
-		local rowsNeeded = capacity // RACKS_PER_ROW
-		local targetZ = originalCFrame[1].Position.Z
-		for row = 1, rowsNeeded do
+		local totalRows = capacity // RACKS_PER_ROW
+		local baseZ = originalCFrame[1].Position.Z
+		for row = 1, totalRows do
+			local side = (row - 1) % ROW_SPLIT_SIDES + 1
+			local depthSlot = (row - 1) // ROW_SPLIT_SIDES
+			local targetZ = baseZ + depthSlot * ROW_SPACING
 			local firstRack = (row - 1) * RACKS_PER_ROW + 1
 			local deltaZ = targetZ - originalCFrame[firstRack].Position.Z
 			for rackIndex = firstRack, firstRack + RACKS_PER_ROW - 1 do
-				racks[rackIndex].CFrame = originalCFrame[rackIndex] + Vector3.new(rowOffsetX[row], 0, deltaZ)
+				racks[rackIndex].CFrame = originalCFrame[rackIndex] + Vector3.new(rowOffsetX[side], 0, deltaZ)
 			end
 		end
 		-- Any of column 1's racks beyond what this capacity reveals stay
@@ -515,7 +532,7 @@ local function applyColumnLayout(floorTier)
 		-- matter to a player -- put them back at their built spot anyway,
 		-- just so nothing is left sitting at a stale CFrame from a
 		-- PREVIOUS tier's row-split math.
-		for rackIndex = rowsNeeded * RACKS_PER_ROW + 1, COLUMN_1_MAX_RACKS do
+		for rackIndex = totalRows * RACKS_PER_ROW + 1, COLUMN_1_MAX_RACKS do
 			racks[rackIndex].CFrame = originalCFrame[rackIndex]
 		end
 	else
