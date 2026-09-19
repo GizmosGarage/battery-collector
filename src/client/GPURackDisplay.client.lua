@@ -366,8 +366,10 @@ local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 -- flush. Together, flushing column 1 left and the last column right is
 -- what widens the walkway between them, instead of leaving the columns
 -- at their closer, natural spacing. Any column strictly BETWEEN column 1
--- and the last one (tier 4+, not asked for yet) stays at its true built
--- position for now.
+-- and the last one (3-4 columns covered, i.e. tiers 4-5) stays at its
+-- true built position -- verified in Studio at floorTier 5/64 racks:
+-- column 1 and column 4 flush to the floor's edges, columns 2-3 sit
+-- untouched at their natural spacing between them.
 local function applyColumnLayout(floorTier)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = capacity // GPUs.RACKS_PER_COLUMN

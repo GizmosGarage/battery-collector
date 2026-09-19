@@ -119,12 +119,12 @@ source code and reference art cannot restore the complete world. It contains:
 - `Workspace.DataCenter` — a `Model` with the (half-size, 8x8) battery
   dump-off `Pad`, its floating `Sign`, and a `Platform` part built 24
   studs wide (matching the Pad's own footprint) by `GPUs.RACKS_PER_COLUMN`
-  rows deep -- big enough for column 1's full 16 racks; only columns 1-2
-  have a floor built under them at all right now (see GPURackDisplay.
-  client.lua's `updatePlatform`, which widens it further once 2+ columns
-  are unlocked) -- columns 3-4 exist as bare `Server_Rack`s further out
-  in +X with no floor of their own yet (add one, the same way, whenever
-  a player actually reaches that floor tier). GPURackDisplay.client.lua
+  rows deep -- big enough for column 1's full 16 racks. `Platform` is a
+  single part -- there's no separate floor per column -- so
+  GPURackDisplay.client.lua's `updatePlatform` covers however many
+  columns the player's floor tier actually reaches using the same
+  formula regardless of column count, verified in Studio Play mode
+  through floorTier 5/64 racks (all 4 columns). GPURackDisplay.client.lua
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
@@ -185,8 +185,11 @@ source code and reference art cannot restore the complete world. It contains:
   far each one has to move), widening the walkway between them to fill
   however much room the floor actually has, instead of leaving the
   natural, narrower gap. Any column strictly BETWEEN column 1 and the
-  last one (tier 4+, not built out yet) stays at its true built position
-  for now. The racks' BUILT (Edit-mode) position in Studio is always the
+  last one (3-4 columns covered, i.e. tiers 4-5) stays at its true built
+  position -- verified in Studio Play mode at floorTier 5/64 racks:
+  column 1 and column 4 flush to the floor's edges exactly as they do at
+  tier 3, columns 2-3 sit untouched at their natural spacing between
+  them. The racks' BUILT (Edit-mode) position in Studio is always the
   single centered row -- every layout above is a client-side illusion on
   top of it, and `GPUs.dataCenterCenterX` (used for the Pad/Sign) still
   lands on the correct walkway midpoint either way, since flushing both
