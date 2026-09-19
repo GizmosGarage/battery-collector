@@ -288,8 +288,7 @@ end
 -- The X-coordinate the data center's Pad and Sign should sit at for a
 -- given floor tier -- centered on whichever columns that tier actually
 -- covers (just column 1 at tiers 1-3, whether that's 4, 8, or all 16 of
--- its racks -- the pad never moves just because MORE OF THE SAME column
--- opened up; column 1 THROUGH the last column tier 4+ unlocks), not
+-- its racks; column 1 THROUGH the last column tier 4+ unlocks), not
 -- always column 1's own center. This is the ONE
 -- formula both GPURackDisplay.client.lua (moves the Pad/Sign there,
 -- visually, per player -- see its updatePlatform for the matching floor
@@ -302,11 +301,31 @@ end
 -- be recomputed the same way, per player, on the SERVER -- a plain
 -- `pad.Touched` can't do that (see the README for why one static
 -- position was tried and reverted twice before this).
+--
+-- `rightIndex`, at tiers 1-3 (only column 1 covered), is whichever rack
+-- CAPACITY reveals -- not always rack 4. That matters now that tier 2
+-- spreads two of column 1's built ROWS out SIDE BY SIDE instead of
+-- stacking them front-to-back (see GPURackDisplay.client.lua's
+-- computeRowOffsets): rack 8 (tier 2's last rack) needs to be the RIGHT
+-- reference, not rack 4, or this would only ever measure the FIRST row's
+-- own width and miss the second row entirely. This still gives the
+-- exact same answer as before for tiers 1 and 3 (racks 4 and 16 sit at
+-- the SAME X as rack 4 always did, since every row in column 1 shares
+-- one X footprint -- only ROW 2's rack GROUP gets moved sideways by
+-- GPURackDisplay.client.lua, and it's moved a SYMMETRIC amount from
+-- row 1's, so this formula lands on the same center whether it reads
+-- racks' TRUE positions (as DataCenter.server.lua always does -- the
+-- server never moves a rack) or their client-shifted ones.
 function GPUs.dataCenterCenterX(floorTier, racks)
 	local capacity = GPUs.maxRacksForTier(floorTier) or 1
 	local columnsCovered = math.max(1, capacity // GPUs.RACKS_PER_COLUMN)
 	local leftRack = racks[1]
-	local rightIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
+	local rightIndex
+	if columnsCovered == 1 then
+		rightIndex = math.min(capacity, GPUs.RACKS_PER_COLUMN, #racks)
+	else
+		rightIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
+	end
 	local rightRack = racks[rightIndex]
 	local leftEdge = leftRack.Position.X - leftRack.Size.X / 2
 	local rightEdge = rightRack.Position.X + rightRack.Size.X / 2

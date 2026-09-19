@@ -130,18 +130,24 @@ source code and reference art cannot restore the complete world. It contains:
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
-  once a whole column's depth is reached). WIDTH grows ONLY from its
-  RIGHT edge -- the LEFT edge is always the floor's own BUILT left edge
-  and NEVER moves, so the room a player already knows from tiers 1-3
+  once a whole column's depth is reached, and tier 2's row-split -- see
+  the Server_Rack bullet below -- collapses onto a single row's depth
+  too, so it never needs to grow either). WIDTH, from tier 3 on, grows
+  ONLY from its RIGHT edge -- the LEFT edge is always the floor's own
+  BUILT left edge and NEVER moves, so the room a player already knows
   stays exactly where it was; only the right edge extends, once 2+ whole
   columns are unlocked, to stay flush with wherever the rightmost column
   ends up (see the Server_Rack bullet below for exactly how far that is
-  at 2 columns versus 3+). A version that
-  recentered the WHOLE floor around both outer edges symmetrically was
-  tried and reverted -- it moved the tiers-1-3 side a player already
-  knows, which is exactly what this asymmetric version avoids. Its
-  built (Edit-mode) size is just the column-1-only baseline every
-  viewer's copy grows from.
+  at 2 columns versus 3+). A version that recentered the WHOLE floor
+  around both outer edges symmetrically was tried and reverted for THAT
+  case -- it moved a side a player already knew, which is exactly what
+  this asymmetric version avoids. Tier 2 is the one deliberate exception:
+  since it's not flushing an already-known edge but spreading two rows
+  out from a shared center that was ALWAYS in the middle, growing from
+  both sides at once is the version that keeps that center fixed instead
+  of moving it -- see the Server_Rack bullet for the actual numbers. The
+  floor's built (Edit-mode) size is just the column-1-only baseline
+  every viewer's copy grows from either way.
 
   The Pad and its Sign move INDEPENDENTLY of the floor's own shape,
   client-side, to `GPUs.dataCenterCenterX(floorTier, racks)` -- centered
@@ -170,18 +176,36 @@ source code and reference art cannot restore the complete world. It contains:
   rows 16 studs apart, columns roughly 7-12 studs apart. Column 1's row
   is centered in `Platform`'s BUILT width (not flush to either edge) --
   the confirmed look for "every rack the Starter Row allows, before
-  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). Tier 2
-  (`GPUs.floorTiers[2]`, "Row 2", 8 racks) reveals the second row too --
-  still the same true built rows, just more of them, divided from each
-  other by nothing more than the row spacing (16 studs) already built
-  into the world. While EXACTLY one whole column is unlocked
-  (`GPUs.floorTiers[3]`, "Column 1" -- tier 3 only), column 1 stays in
-  that SAME one true built row -- tier 3 just reveals the rest of it (8
-  more racks), lined up exactly like tiers 1-2's rows, never split into
-  two aisles. (An earlier version DID split it into two side-by-side
-  aisles with a walkway down the middle -- reverted because it didn't
-  match tier 1's look.) From tier 4 on (2+ whole columns unlocked),
-  column 1 moves for the first time: now a
+  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks).
+
+  Tier 2 (`GPUs.floorTiers[2]`, "Row 2", 8 racks) is the one tier that
+  moves column 1 sideways WITHOUT unlocking a new column: row 1 and row
+  2 (built 16 studs apart in Z -- one behind the other) each shift to sit
+  SIDE BY SIDE instead, at row 1's own depth, with a walkway
+  (`ROW_SPLIT_WALKWAY`, the same width as `WIDEST_NATURAL_GAP` below, for
+  a consistent look) between them -- row 1 flush with `Platform`'s LEFT
+  edge, row 2 flush with its RIGHT edge, both shifted an EQUAL distance
+  from their own shared natural center (`ROW_CENTER_X`) so the floor
+  widens from BOTH sides at once, centered where it always was, rather
+  than flushing one fixed edge the way tier 4+'s columns do. Verified in
+  Studio: both rows sit at Z=100 (collapsed onto row 1's depth, matching
+  tier 1's own -- the floor never gets DEEPER for tier 2, only wider),
+  spanning -37.79 to -24.01 (row 1) and -11.99 to 1.79 (row 2), a 12.02
+  stud walkway between them, floor spanning the same -37.79 to 1.79
+  (39.58 studs total) and centered, along with the Pad, at exactly -18 --
+  the SAME X tier 1's Pad already sat at, confirmed to match
+  `GPUs.dataCenterCenterX`'s SERVER-side (never-shifted-rack) answer to
+  within floating-point rounding.
+
+  While EXACTLY one whole column is unlocked (`GPUs.floorTiers[3]`,
+  "Column 1" -- tier 3 only), column 1 stays in its one true built row --
+  tier 3 just reveals the rest of it (8 more racks), lined up exactly
+  like tier 1's row, never split into two aisles. (An earlier version
+  DID split it into two side-by-side aisles with a walkway down the
+  middle -- reverted because it didn't match tier 1's look; a LATER
+  version applied that same kind of side-by-side split to tier 2
+  instead, since that's the tier that actually needed it.) From tier 4
+  on (2+ whole columns unlocked), column 1 moves for the first time: now a
   whole solid aisle alongside column 2 (also solid) -- but the two
   columns don't just sit at their closer, natural spacing. Column 1 flushes LEFT
   against `Platform`'s own fixed left edge, and column 2 flushes RIGHT
