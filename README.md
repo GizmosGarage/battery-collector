@@ -124,21 +124,21 @@ source code and reference art cannot restore the complete world. It contains:
   GPURackDisplay.client.lua's `updatePlatform` covers however many
   columns the player's floor tier actually reaches using the same
   formula regardless of column count, verified in Studio Play mode
-  through floorTier 4/64 racks (all 4 columns -- the last floor tier
-  there is, `GPUs.floorTiers[4]`, jumps straight from column 2 to
+  through floorTier 5/64 racks (all 4 columns -- the last floor tier
+  there is, `GPUs.floorTiers[5]`, jumps straight from column 2 to
   column 4). GPURackDisplay.client.lua
   resizes AND repositions `Platform` client-side: DEPTH stays flush with
   the back of whichever row THAT player's FLOOR TIER has room for
   (every column shares the same row positions, so this never changes
   once a whole column's depth is reached). WIDTH grows ONLY from its
   RIGHT edge -- the LEFT edge is always the floor's own BUILT left edge
-  and NEVER moves, so the room a player already knows from tiers 1-2
+  and NEVER moves, so the room a player already knows from tiers 1-3
   stays exactly where it was; only the right edge extends, once 2+ whole
   columns are unlocked, to stay flush with wherever the rightmost column
   ends up (see the Server_Rack bullet below for exactly how far that is
   at 2 columns versus 3+). A version that
   recentered the WHOLE floor around both outer edges symmetrically was
-  tried and reverted -- it moved the tier-1/2 side a player already
+  tried and reverted -- it moved the tiers-1-3 side a player already
   knows, which is exactly what this asymmetric version avoids. Its
   built (Edit-mode) size is just the column-1-only baseline every
   viewer's copy grows from.
@@ -149,7 +149,7 @@ source code and reference art cannot restore the complete world. It contains:
   rack now in play), not the floor's own midpoint, since the floor's
   left edge deliberately stops recentering while the pad still needs to
   track the walkway wherever it ends up. Two STATIC pad positions
-  (column 1's center, then tier 3's wider center) were each tried and
+  (column 1's center, then column 2's wider center) were each tried and
   reverted before this -- one static spot can only ever be right for
   SOME tiers, wrong for the rest, since every tier's true walkway center
   is a different X. So unlike everything else GPURackDisplay.client.lua
@@ -170,14 +170,18 @@ source code and reference art cannot restore the complete world. It contains:
   rows 16 studs apart, columns roughly 7-12 studs apart. Column 1's row
   is centered in `Platform`'s BUILT width (not flush to either edge) --
   the confirmed look for "every rack the Starter Row allows, before
-  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). While EXACTLY
-  one whole column is unlocked (`GPUs.floorTiers[2]`, "Column 1" -- tier
-  2 only), column 1 stays in that SAME one true built row -- tier 2 just
-  reveals the rest of it (12 more racks), lined up exactly like tier 1's
-  4-rack row, never split into two aisles. (An earlier version DID split
-  it into two side-by-side aisles with a walkway down the middle --
-  reverted because it didn't match tier 1's look.) From tier 3 on (2+
-  whole columns unlocked), column 1 moves for the first time: now a
+  buying a floor upgrade" (`GPUs.floorTiers[1]`, 4 racks). Tier 2
+  (`GPUs.floorTiers[2]`, "Row 2", 8 racks) reveals the second row too --
+  still the same true built rows, just more of them, divided from each
+  other by nothing more than the row spacing (16 studs) already built
+  into the world. While EXACTLY one whole column is unlocked
+  (`GPUs.floorTiers[3]`, "Column 1" -- tier 3 only), column 1 stays in
+  that SAME one true built row -- tier 3 just reveals the rest of it (8
+  more racks), lined up exactly like tiers 1-2's rows, never split into
+  two aisles. (An earlier version DID split it into two side-by-side
+  aisles with a walkway down the middle -- reverted because it didn't
+  match tier 1's look.) From tier 4 on (2+ whole columns unlocked),
+  column 1 moves for the first time: now a
   whole solid aisle alongside column 2 (also solid) -- but the two
   columns don't just sit at their closer, natural spacing. Column 1 flushes LEFT
   against `Platform`'s own fixed left edge, and column 2 flushes RIGHT
@@ -187,7 +191,7 @@ source code and reference art cannot restore the complete world. It contains:
   walkway between them to fill however much room the floor actually
   has, instead of leaving the natural, narrower gap.
 
-  Tier 4 (all 4 columns, `GPUs.floorTiers[4]`, which jumps straight from
+  Tier 5 (all 4 columns, `GPUs.floorTiers[5]`, which jumps straight from
   column 2 to column 4 -- there's no separate 3-column checkpoint) goes
   further: instead of only columns 1 and 4 moving while 2 and 3 sit at
   their closer, natural built spacing (6.86 studs, versus ~12.02 studs

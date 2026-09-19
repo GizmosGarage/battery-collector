@@ -44,20 +44,24 @@
 	waiting, instead of the floor creeping out one row at a time as racks
 	get bought into it.
 
-	Once a player's floor tier has room for the WHOLE of column 1 --
-	but ONLY column 1 (tier 2, GPUs.floorTiers[2]) -- column 1's racks --
-	all 16 of them, including the 4 free Starter Row ones already bought
-	-- stay in that SAME one true built row, lined up exactly like tier
-	1's 4-rack row; tier 2 just reveals the rest of it, never splits it
-	into two aisles. From tier 3 on (2+ WHOLE columns unlocked), column 1
-	moves for the first time -- now as a whole solid aisle alongside
-	column 2 (also solid) -- but the two columns don't just sit at their
-	closer, natural spacing: column 1 flushes LEFT against the floor's
-	own fixed left edge, and column 2 flushes RIGHT against the floor's
-	own (extended) right edge, widening the walkway between them to fill
-	however much room the floor actually has.
+	Tiers 1-3 (GPUs.floorTiers[1..3]) never move column 1 at all -- each
+	one just reveals MORE of that one true built row/column, lined up
+	exactly the way it was always built: tier 1 shows row 1 (4 racks),
+	tier 2 shows rows 1-2 (8 racks, divided from each other by nothing
+	more than the row spacing already built into the world -- see
+	COLUMN_1_MAX_RACKS/the row math in updatePlatform), and tier 3 shows
+	the WHOLE column (all 16 racks, rows 1-4) -- never split into two
+	aisles the way an earlier version of this file tried and reverted.
 
-	Tier 4 (all 4 columns, GPUs.floorTiers[4]) goes further still: rather
+	From tier 4 on (2+ WHOLE columns unlocked), column 1 moves for the
+	first time -- now as a whole solid aisle alongside column 2 (also
+	solid) -- but the two columns don't just sit at their closer, natural
+	spacing: column 1 flushes LEFT against the floor's own fixed left
+	edge, and column 2 flushes RIGHT against the floor's own (extended)
+	right edge, widening the walkway between them to fill however much
+	room the floor actually has.
+
+	Tier 5 (all 4 columns, GPUs.floorTiers[5]) goes further still: rather
 	than only the OUTER two columns (1 and 4) moving while 2 and 3 sit at
 	their closer, natural built spacing, EVERY column from 2 on gets
 	spaced the SAME distance from its neighbor (the widest gap any two
@@ -81,7 +85,7 @@
 	The floor itself WIDENS once 2+ columns are unlocked, but only ever
 	from its RIGHT edge -- the LEFT edge (column 1's side) never moves
 	from its original built position, so the room a player already knows
-	from tiers 1-2 stays exactly where it was; the walkway just opens up
+	from tiers 1-3 stays exactly where it was; the walkway just opens up
 	further into the middle of a wider floor instead of the whole floor
 	recentering around it -- see updatePlatform below. The battery
 	dump-off Pad and its Sign move independently of the floor's own
@@ -116,7 +120,7 @@ local racks = GPUs.getAllRacks()
 
 -- EVERY rack's TRUE built CFrame, captured right away, before anything
 -- else in this script ever has a chance to nudge one sideways. Every
--- later "where should this rack sit" calculation (the tier-3+ column
+-- later "where should this rack sit" calculation (the tier-4+ column
 -- flush and the floor's own right-edge math) reads POSITIONS from here,
 -- never live off `racks[i].Position` -- a rack that's already been
 -- nudged this render() would otherwise get double-counted by whichever
@@ -235,7 +239,7 @@ local TOTAL_COLUMNS = GPUs.MAX_RACKS // GPUs.RACKS_PER_COLUMN
 -- habit GPUs.sortRacks already uses for column boundaries. Every column
 -- shares the same width (they're identical rows of touching racks), so
 -- this is really just "where does column c happen to sit," reusable by
--- both the margin below and the tier-4 equal-gap spacing further down.
+-- both the margin below and the tier-5 equal-gap spacing further down.
 local trueColLeft, trueColRight = {}, {}
 for c = 1, TOTAL_COLUMNS do
 	local firstRack = (c - 1) * GPUs.RACKS_PER_COLUMN + 1
@@ -253,7 +257,7 @@ end
 -- computeColumnOffsets.
 local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - trueColRight[1]
 
--- Tier 4 ONLY (3+ whole columns covered): the widest gap BETWEEN any two
+-- Tier 5 ONLY (3+ whole columns covered): the widest gap BETWEEN any two
 -- ADJACENT columns, as they were actually built -- column 1 and 2 were
 -- built closer together than columns 2-3 and 3-4 (see the README). Using
 -- this as the SAME gap between every covered column (computeColumnOffsets
@@ -270,14 +274,15 @@ end
 -- applyColumnLayout (moves the racks) and updatePlatform (sizes the
 -- floor around wherever the last covered column ends up) compute this,
 -- so the two can never disagree about where a column actually sits.
---   Fewer than 2 columns covered (tiers 1-2): returns an empty table --
---     no column moves; applyColumnLayout/updatePlatform each already
+--   Fewer than 2 columns covered (tiers 1-3 -- 0 columns for tiers 1-2's
+--     4/8 racks, exactly 1 for tier 3's full 16): returns an empty table
+--     -- no column moves; applyColumnLayout/updatePlatform each already
 --     handle that case on their own.
---   Exactly 2 columns covered (tier 3): column 1 flushes LEFT and column
+--   Exactly 2 columns covered (tier 4): column 1 flushes LEFT and column
 --     2 flushes RIGHT by PLATFORM_RIGHT_MARGIN each -- unchanged from
 --     before. With only one gap total, it's already "equal to itself,"
 --     nothing more to do.
---   3+ columns covered (tier 4): column 1 still flushes LEFT the same
+--   3+ columns covered (tier 5): column 1 still flushes LEFT the same
 --     way, but every column from 2 on is placed WIDEST_NATURAL_GAP past
 --     the previous column's (now-shifted) right edge -- so every covered
 --     column ends up the same distance from its neighbor, not just the
@@ -303,14 +308,15 @@ local function computeColumnOffsets(columnsCovered)
 	return offset
 end
 
--- Tier 2 ONLY: extra breathing room to add to EACH side of the floor,
--- beyond the built margin above -- Ethan wants tier 2's clearance a
--- little more generous than tier 1's without moving the racks or the
+-- Tier 3 ONLY (exactly one whole column, 16 racks, revealed as a single
+-- row): extra breathing room to add to EACH side of the floor, beyond
+-- the built margin above -- Ethan wants that tier's clearance a little
+-- more generous than tiers 1-2's without moving the racks or the
 -- floor's center, so this only ever widens the floor symmetrically
 -- around the row it already has (see updatePlatform). Not used for any
--- other tier -- tier 1 stays exactly as built, and tier 3+ keeps its own
--- flush-to-the-last-column sizing untouched.
-local TIER_2_EXTRA_CLEARANCE = 2
+-- other tier -- tiers 1-2 stay exactly as built, and tier 4+ keeps its
+-- own flush-to-the-last-column sizing untouched.
+local COLUMN_1_EXTRA_CLEARANCE = 2
 
 -- The battery dump-off Pad and its floating Sign move independently of
 -- the floor's own shape -- centered on the WALKWAY itself (see
@@ -327,14 +333,14 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 -- the same 4 row positions, so this never needs to change once a WHOLE
 -- column's worth of depth is reached) -- reads Z live off `racks`, which
 -- is fine, since nothing in this script ever touches a rack's Z. The
--- LEFT edge stays at the floor's own BUILT position for tier 1 and every
--- tier from 3 on (flush with column 1's side, exactly where a player
--- already knows it) -- tier 2 is the one exception, nudging BOTH edges
--- outward by TIER_2_EXTRA_CLEARANCE (see above) for a little more
--- breathing room next to that one full column, without moving the racks
--- or recentering the floor. From tier 3 on, only the RIGHT edge extends
--- outward, to stay flush with wherever computeColumnOffsets puts the
--- last covered column's right edge -- reads TRUE positions plus that
+-- LEFT edge stays at the floor's own BUILT position for tiers 1-2 and
+-- every tier from 4 on (flush with column 1's side, exactly where a
+-- player already knows it) -- tier 3 is the one exception, nudging BOTH
+-- edges outward by COLUMN_1_EXTRA_CLEARANCE (see above) for a little
+-- more breathing room next to that one full column, without moving the
+-- racks or recentering the floor. From tier 4 on, only the RIGHT edge
+-- extends outward, to stay flush with wherever computeColumnOffsets puts
+-- the last covered column's right edge -- reads TRUE positions plus that
 -- SAME offset table, never live off `racks` -- applyColumnLayout may
 -- have already moved that column by the time this runs (see render()),
 -- and measuring its already-shifted position here would double-count
@@ -353,8 +359,8 @@ local function updatePlatform(floorTier)
 	local leftEdge = platformLeftEdge
 	local rightEdge = platformX + platformWidth / 2
 	if columnsCovered == 1 then
-		leftEdge = leftEdge - TIER_2_EXTRA_CLEARANCE
-		rightEdge = rightEdge + TIER_2_EXTRA_CLEARANCE
+		leftEdge = leftEdge - COLUMN_1_EXTRA_CLEARANCE
+		rightEdge = rightEdge + COLUMN_1_EXTRA_CLEARANCE
 	elseif columnsCovered >= 2 then
 		local columnOffset = computeColumnOffsets(columnsCovered)
 		rightEdge = trueColRight[columnsCovered] + columnOffset[columnsCovered]
@@ -381,16 +387,16 @@ end
 -- physically attached to one specific rack and nothing else.
 --
 -- Column 1 gets one of two treatments depending on how many whole
--- columns are unlocked: tiers 1-2 (0-1 columns) leave it at its one true
--- built row -- tier 2 just reveals the rest of that same row, lined up
--- exactly like tier 1, never split into two aisles; tier 3+ (2+ columns)
--- shifts it flush with the FLOOR's own fixed left edge (see
--- computeColumnOffsets).
+-- columns are unlocked: tiers 1-3 (0-1 columns -- 4, 8, or all 16 of its
+-- own racks) leave it at its one true built row -- tiers 2 and 3 just
+-- reveal more of that same row/column, lined up exactly like tier 1,
+-- never split into two aisles; tier 4+ (2+ columns) shifts it flush with
+-- the FLOOR's own fixed left edge (see computeColumnOffsets).
 --
--- At exactly 2 columns (tier 3), column 2 flushes RIGHT the same way,
+-- At exactly 2 columns (tier 4), column 2 flushes RIGHT the same way,
 -- against the floor's own extended right edge, widening the one walkway
 -- between them to fill however much room the floor has. At 3+ columns
--- (tier 4), EVERY column from 2 on -- not just the last one -- gets
+-- (tier 5), EVERY column from 2 on -- not just the last one -- gets
 -- spaced WIDEST_NATURAL_GAP from its neighbor, so the gaps beside
 -- columns 2 and 3 are exactly as wide as the gap beside column 1 and the
 -- last column, instead of columns 2-3 sitting at their narrower natural

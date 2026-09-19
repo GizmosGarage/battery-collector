@@ -92,18 +92,22 @@ GPUs.RACKS_PER_COLUMN = 16
 -- (free) is what every player starts with, and it's deliberately tight --
 -- just the FIRST ROW (4 racks) of column 1, not the whole column -- so a
 -- brand new player hits a real wall at 4 racks and has to buy into the
--- floor itself (tier 2) to keep going. Tier 2 finishes out column 1 (the
--- remaining 3 rows, racks 5-16) -- a player's first floor upgrade only
--- ever has to fill in the column they can already see. Tier 3 adds
--- column 2 (16 more racks, 32 total). Tier 4 -- the LAST upgrade there
--- is -- adds BOTH remaining columns (3 and 4) at once, straight to the
--- 64-rack ceiling: only 3 floor upgrades exist in total (tiers 2-4),
--- not one per column, so there's no separate 48-rack checkpoint. It's
--- still named "Column 4" (not "Columns 3-4") to match every other tier's
--- naming, which names the LAST column the upgrade gives room for, not
--- how many columns that particular purchase adds. This matches the
--- world, which has 64 Server_Racks built as 4 columns side by side, so
--- Column 4 is the ceiling either way.
+-- floor itself to keep going. Tier 2, the first paid upgrade, reveals
+-- just the SECOND row (racks 5-8, 8 total) -- still column 1, still no
+-- new column, just one more row of the column a player can already see,
+-- for a cheap first taste of what buying floor room does. Tier 3
+-- finishes out the rest of column 1 (rows 3-4, racks 9-16) -- a
+-- player's second floor upgrade fills in the column they've now seen
+-- two rows of. Tier 4 adds column 2 (16 more racks, 32 total). Tier 5 --
+-- the LAST upgrade there is -- adds BOTH remaining columns (3 and 4) at
+-- once, straight to the 64-rack ceiling: only 4 floor upgrades exist in
+-- total (tiers 2-5), not one per row/column, so there's no separate
+-- 48-rack checkpoint. It's still named "Column 4" (not "Columns 3-4")
+-- to match every other column tier's naming, which names the LAST
+-- column the upgrade gives room for, not how many columns that
+-- particular purchase adds. This matches the world, which has 64
+-- Server_Racks built as 4 columns side by side, so Column 4 is the
+-- ceiling either way.
 --
 -- Racks are numbered COLUMN first (left to right), then ROW within a
 -- column (front to back) -- see GPUs.sortRacks, which both
@@ -112,6 +116,7 @@ GPUs.RACKS_PER_COLUMN = 16
 -- even reachable -- these tier names track that exactly.
 GPUs.floorTiers = {
 	{ name = "Starter Row", maxRacks = 4,  price = 0 },
+	{ name = "Row 2",       maxRacks = 8,  price = 5000 },
 	{ name = "Column 1",    maxRacks = 16, price = 25000 },
 	{ name = "Column 2",    maxRacks = 32, price = 250000 },
 	{ name = "Column 4",    maxRacks = 64, price = 25000000 },
@@ -221,15 +226,17 @@ end
 -- SERVER-side, by RackNumbering.server.lua, from the TRUE built layout)
 -- over re-deriving order from GPUs.sortRacks' live-position gap
 -- detection. That detection is only safe on a layout no one has ever
--- nudged -- once GPURackDisplay.client.lua splits column 1 into two
--- aisles flush with the floor tile's edges (tier 2+), the right aisle
--- can end up CLOSER to column 2 than COLUMN_GAP_THRESHOLD, and a live
--- re-scan at that point misreads it as one merged column, scrambling
--- every rack number from there on. The server never moves a rack (only
--- this client-side illusion does), so its stamped numbers are immune to
--- that regardless of when this function happens to be called relative
--- to the split. Falls back to sortRacks only if the attributes genuinely
--- aren't there yet (e.g. RackNumbering.server.lua hasn't run, or hasn't
+-- nudged -- once GPURackDisplay.client.lua starts flushing columns
+-- together (tier 4+, spacing every column the same distance apart --
+-- see computeColumnOffsets in GPURackDisplay.client.lua), a shifted
+-- column can end up closer to its neighbor than COLUMN_GAP_THRESHOLD,
+-- and a live re-scan at that point misreads two columns as one merged
+-- column, scrambling every rack number from there on. The server never
+-- moves a rack (only this client-side illusion does), so its stamped
+-- numbers are immune to that regardless of when this function happens
+-- to run relative to any of those shifts. Falls back to sortRacks only
+-- if the attributes genuinely aren't there yet (e.g. RackNumbering.
+-- server.lua hasn't run, or hasn't
 -- replicated to this client) rather than hanging forever.
 --
 -- MEMOIZED -- the first call's result is cached and handed back as-is to
@@ -280,8 +287,10 @@ end
 
 -- The X-coordinate the data center's Pad and Sign should sit at for a
 -- given floor tier -- centered on whichever columns that tier actually
--- covers (just column 1 at tiers 1-2, column 1 THROUGH the last column
--- tier 3+ unlocks), not always column 1's own center. This is the ONE
+-- covers (just column 1 at tiers 1-3, whether that's 4, 8, or all 16 of
+-- its racks -- the pad never moves just because MORE OF THE SAME column
+-- opened up; column 1 THROUGH the last column tier 4+ unlocks), not
+-- always column 1's own center. This is the ONE
 -- formula both GPURackDisplay.client.lua (moves the Pad/Sign there,
 -- visually, per player -- see its updatePlatform for the matching floor
 -- width) and DataCenter.server.lua (checks deposits against that SAME
