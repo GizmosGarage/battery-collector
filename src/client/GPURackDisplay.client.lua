@@ -225,6 +225,15 @@ local COLUMN_1_MAX_RACKS = math.min(GPUs.RACKS_PER_COLUMN, #racks)
 -- rightmost -- every row shares the same X).
 local PLATFORM_RIGHT_MARGIN = (platformX + platformWidth / 2) - (originalCFrame[4].Position.X + racks[4].Size.X / 2)
 
+-- Tier 2 ONLY: extra breathing room to add to EACH side of the floor,
+-- beyond the built margin above -- Ethan wants tier 2's clearance a
+-- little more generous than tier 1's without moving the racks or the
+-- floor's center, so this only ever widens the floor symmetrically
+-- around the row it already has (see updatePlatform). Not used for any
+-- other tier -- tier 1 stays exactly as built, and tier 3+ keeps its own
+-- flush-to-the-last-column sizing untouched.
+local TIER_2_EXTRA_CLEARANCE = 2
+
 -- The battery dump-off Pad and its floating Sign move independently of
 -- the floor's own shape -- centered on the WALKWAY itself (see
 -- GPUs.dataCenterCenterX), not the floor's own midpoint, since the
@@ -240,10 +249,13 @@ local signY, signZ = sign and sign.Position.Y, sign and sign.Position.Z
 -- the same 4 row positions, so this never needs to change once a WHOLE
 -- column's worth of depth is reached) -- reads Z live off `racks`, which
 -- is fine, since nothing in this script ever touches a rack's Z. The
--- LEFT edge never moves -- always the floor's own BUILT left edge, flush
--- with column 1's side, exactly where a player already knows it from
--- tiers 1-2 -- only the RIGHT edge extends outward once 2+ whole columns
--- are unlocked, to stay flush (plus PLATFORM_RIGHT_MARGIN) with the
+-- LEFT edge stays at the floor's own BUILT position for tier 1 and every
+-- tier from 3 on (flush with column 1's side, exactly where a player
+-- already knows it) -- tier 2 is the one exception, nudging BOTH edges
+-- outward by TIER_2_EXTRA_CLEARANCE (see above) for a little more
+-- breathing room next to that one full column, without moving the racks
+-- or recentering the floor. From tier 3 on, only the RIGHT edge extends
+-- outward, to stay flush (plus PLATFORM_RIGHT_MARGIN) with the
 -- rightmost RACK now in play. Reads that rack's TRUE position from
 -- originalCFrame, not live off `racks` -- applyColumnLayout may have
 -- already flushed that SAME rack rightward by the time this runs (see
@@ -260,14 +272,18 @@ local function updatePlatform(floorTier)
 	local backEdge = reachedRack.Position.Z + reachedRack.Size.Z / 2
 	local depth = backEdge - platformFrontEdge
 
+	local leftEdge = platformLeftEdge
 	local rightEdge = platformX + platformWidth / 2
-	if columnsCovered >= 2 then
+	if columnsCovered == 1 then
+		leftEdge = leftEdge - TIER_2_EXTRA_CLEARANCE
+		rightEdge = rightEdge + TIER_2_EXTRA_CLEARANCE
+	elseif columnsCovered >= 2 then
 		local rightRackIndex = math.min((columnsCovered - 1) * GPUs.RACKS_PER_COLUMN + 4, #racks)
 		local rightRackTrueX = originalCFrame[rightRackIndex].Position.X
 		rightEdge = (rightRackTrueX + racks[rightRackIndex].Size.X / 2) + PLATFORM_RIGHT_MARGIN
 	end
-	local width = rightEdge - platformLeftEdge
-	local centerX = (platformLeftEdge + rightEdge) / 2
+	local width = rightEdge - leftEdge
+	local centerX = (leftEdge + rightEdge) / 2
 
 	platform.Size = Vector3.new(width, platformHeight, depth)
 	platform.CFrame = CFrame.new(centerX, platformY, platformFrontEdge + depth / 2)
